@@ -1,0 +1,540 @@
+TRACK 5: SPONSY BOT - SPONSORSHIP OUTREACH AUTOMATION
+
+OBJECTIVE
+
+Build a human-in-the-loop sponsorship outreach system that helps a club find, prioritize, contact, and follow up with potential sponsors.
+
+The system should:
+
+- Research companies.
+- Prioritize and categorize potential sponsors.
+- Decide what to ask each sponsor for.
+- Generate personalized sponsorship emails.
+- Track every conversation and follow-up.
+- Require organizer approval before any outgoing action.
+- Replace scattered spreadsheets, forgotten follow-ups, and generic mass emails.
+
+The final system should be practical enough for a club to realistically adopt for future sponsorship drives.
+
+
+MANDATORY REQUIREMENTS
+
+1. SPONSOR TRACKER
+
+Maintain a sponsor tracker that records:
+
+- Company name
+- Company category or tier
+- Contact person
+- Contact information
+- Current status
+- Assigned team member
+- Research information
+- Sponsorship recommendation
+- Reasoning
+- Complete email history
+- Follow-up history
+- Notes
+
+Required sponsor statuses:
+
+- Not Contacted
+- Contacted
+- Follow-up
+- Interested
+- Declined
+- Closed
+
+
+2. COMPANY RESEARCH
+
+Research every potential sponsor and use verified information to understand the company.
+
+Research should include:
+
+- Company profile
+- Industry
+- Products or services
+- Previous sponsorships
+- Past events supported
+- Relevant partnerships
+- Community or student initiatives
+- Possible sponsorship opportunities
+
+The system must use company research and past sponsorship history to prioritize and categorize sponsors.
+
+IMPORTANT:
+
+The system must never fabricate company information.
+
+If information cannot be verified, clearly mark it as:
+
+UNVERIFIED
+
+Unverified information must never be presented as confirmed fact.
+
+
+3. SPONSOR PRIORITIZATION AND RECOMMENDATION
+
+The system should prioritize sponsors based on their profile and sponsorship history.
+
+For every sponsor, recommend what the club should ask for.
+
+Possible sponsorship requests include:
+
+- Cash sponsorship
+- Swag / Goodies
+- Infrastructure
+- Cloud credits
+- Software credits
+- Hardware
+- Food / Refreshments
+- Marketing support
+- Other relevant benefits
+
+The system must show the reasoning behind each recommendation.
+
+Example:
+
+Company: Cloud Provider
+
+Recommendation: Cloud Infrastructure Credits
+
+Reason:
+The company provides cloud services and has previously supported developer or student communities.
+
+
+4. PERSONALIZED EMAIL GENERATION
+
+Generate a company-specific personalized sponsorship email for every sponsor.
+
+The system must NOT send the same generic email to every company.
+
+Each email should be based on:
+
+- Company profile
+- Company industry
+- Previous sponsorship history
+- Relevant initiatives
+- Recommended sponsorship type
+- Event information
+- Contact person's role
+- Other verified research information
+
+The email should be personalized and relevant to the specific company.
+
+
+5. HUMAN-IN-THE-LOOP APPROVAL
+
+This is a mandatory requirement.
+
+NO EMAIL MAY BE SENT WITHOUT ORGANIZER APPROVAL.
+
+The workflow must be:
+
+Draft Email
+    ↓
+Organizer Reviews
+    ↓
+Organizer Edits if Necessary
+    ↓
+Organizer Approves
+    ↓
+Email Sent
+
+The organizer must be able to:
+
+- View the email draft
+- Edit the subject
+- Edit the email body
+- Approve the email
+- Reject the email
+- Regenerate the email if necessary
+
+The system must never bypass the approval step.
+
+
+6. EMAIL SENDING
+
+Send emails only after organizer approval.
+
+For every sent email, track:
+
+- Recipient
+- Sender
+- Subject
+- Email body
+- Sent time
+- Approval status
+- Sponsor
+- Team member responsible for the outreach
+
+
+7. REPLY TRACKING
+
+Track sponsor replies.
+
+Classify replies into:
+
+- Interested
+- No Reply
+- Declined
+
+The system should also provide a short summary of the reply and suggest the next action where appropriate.
+
+
+8. FOLLOW-UP AUTOMATION
+
+Schedule follow-ups automatically while respecting a fixed limit.
+
+Example:
+
+Initial Email
+    ↓
+Follow-up 1
+    ↓
+Follow-up 2
+    ↓
+STOP
+
+Maximum:
+
+2 follow-ups per sponsor.
+
+The system must:
+
+- Never send unlimited follow-ups.
+- Never spam a sponsor.
+- Stop follow-ups after the maximum limit.
+- Stop follow-ups if the sponsor declines.
+- Stop follow-ups if the sponsor becomes interested.
+- Respect the human approval workflow for outgoing follow-ups.
+
+
+9. INTERESTED SPONSORS
+
+When a sponsor becomes interested:
+
+- Move the sponsor to the Interested stage.
+- Stop unnecessary follow-ups.
+- Move the sponsor to the next step.
+- Provide a way to arrange a meeting.
+
+Possible workflow:
+
+Interested
+    ↓
+Meeting Requested
+    ↓
+Meeting Scheduled
+    ↓
+Negotiation
+    ↓
+Won / Closed
+
+
+10. DUPLICATE OUTREACH PREVENTION
+
+Prevent duplicate outreach.
+
+Two team members must never unknowingly contact the same company.
+
+Before sending an email, the system must check:
+
+- Whether the company already exists.
+- Whether the company has already been contacted.
+- Which team member is handling the company.
+- Previous email history.
+
+The system should clearly show who owns or is responsible for each sponsor.
+
+
+11. FREE APIs AND FREE TIERS
+
+Use only free APIs or free-tier APIs.
+
+The system must use API limits intelligently.
+
+The expected volume is approximately:
+
+20-40 outgoing emails per day.
+
+The system should be designed to operate within free-tier API limits and must not bypass rate limits.
+
+
+12. DATA ACCURACY
+
+The system must never fabricate:
+
+- Company details
+- Sponsorship history
+- Contact information
+- Previous partnerships
+- Other company information
+
+Only verified information should be presented as fact.
+
+Unverified information must be clearly marked as:
+
+UNVERIFIED
+
+
+SUGGESTED TECH STACK
+
+Workflow / Agent:
+- LangGraph
+
+Research / Verification:
+- Tavily
+
+Contact Search:
+- Apollo or Hunter
+
+AI Model:
+- Gemini or Grok
+
+Teams may use other free alternatives when appropriate.
+
+
+GOOD-TO-HAVE FEATURES
+
+1. AUTOMATIC CONTACT DISCOVERY
+
+Automatically find relevant contacts at each company where possible.
+
+Examples:
+
+- Sponsorship Manager
+- Marketing Manager
+- HR
+- Business Development
+- CSR
+- Community Manager
+- Relevant decision maker
+
+
+2. ONE-CLICK AUTOMATION
+
+Provide a one-click workflow where organizer approval triggers the appropriate next step.
+
+For example:
+
+Approve
+    ↓
+Send Email
+    ↓
+Track Email
+    ↓
+Schedule Follow-up
+    ↓
+Track Reply
+    ↓
+Move to Next Stage
+
+However, the system must still respect the human approval requirement for outgoing emails.
+
+
+3. DASHBOARD
+
+Create a dashboard showing:
+
+- Total sponsors
+- Sponsors by pipeline stage
+- Not contacted
+- Contacted
+- Follow-up pending
+- Interested
+- Declined
+- Meetings
+- Sponsorships won
+- Response rate
+- Follow-up rate
+- Money secured
+- Benefits / credits secured
+
+
+4. MEETING BOOKING
+
+Provide meeting booking functionality using:
+
+- Calendar link
+- Google Calendar
+- Other suitable free scheduling solution
+
+
+5. SPONSORSHIP BROCHURE / DECK
+
+Allow a sponsorship brochure or deck to be attached to emails.
+
+The attachment can be tailored according to the sponsor tier.
+
+
+6. REUSABLE EMAIL TEMPLATES
+
+Provide reusable templates for:
+
+- First outreach
+- Follow-up 1
+- Follow-up 2
+- Interested response
+- Meeting request
+- Thank-you email
+
+
+7. GOOGLE SHEETS INTEGRATION
+
+Provide Google Sheets integration for importing or exporting sponsor tracker information.
+
+The main application database should remain the source of truth.
+
+
+8. REPLY SUMMARIES AND SUGGESTED RESPONSES
+
+When a sponsor replies:
+
+- Summarize the reply.
+- Identify the sponsor's intent.
+- Suggest an appropriate response.
+- Allow the organizer to review and edit the response.
+
+
+9. NOTIFICATIONS
+
+Notify organizers when:
+
+- A sponsor replies.
+- A sponsor becomes interested.
+- A follow-up is due.
+- A meeting is requested.
+- A sponsorship is successfully secured.
+
+
+10. INSTITUTIONAL MEMORY
+
+Store useful information about previous sponsors for future sponsorship drives.
+
+Examples:
+
+- Previous sponsors
+- What they sponsored
+- Amount or benefits provided
+- Previous communication
+- Previous event
+- Sponsor preferences
+- Outcome of previous collaboration
+
+This information should help future teams make better sponsorship decisions.
+
+
+EXAMPLE
+
+Suppose the club needs sponsors for a 24-hour hackathon.
+
+Requirement:
+
+- Cash sponsorship: INR 1,50,000+
+- Swag / Goodies
+- Infrastructure / Cloud Credits
+
+The club has a list of 60 companies.
+
+The system should:
+
+1. Research the 60 companies.
+2. Verify available information.
+3. Identify relevant contacts.
+4. Analyze previous sponsorship history.
+5. Prioritize the companies.
+6. Categorize them into suitable sponsorship types.
+7. Recommend what to ask each company for.
+8. Explain the reasoning.
+9. Generate personalized emails.
+10. Put emails into the organizer approval queue.
+11. Allow the organizer to edit the emails.
+12. Send only approved emails.
+13. Track replies.
+14. Classify replies as Interested, No Reply, or Declined.
+15. Follow up with companies that do not reply.
+16. Allow a maximum of two follow-ups.
+17. Stop contacting companies that decline.
+18. Move interested companies toward a meeting.
+19. Prevent duplicate outreach.
+20. Track the complete sponsorship pipeline.
+
+
+WHAT NOT TO DO
+
+DO NOT:
+
+- Build a generic mass-mailer.
+- Send the same email to every company.
+- Send emails automatically without human review and approval.
+- Spam sponsors with unlimited follow-ups.
+- Use paid APIs when free alternatives are available.
+- Ignore free-tier API rate limits.
+- Fabricate company details.
+- Fabricate sponsorship history.
+- Fabricate contact information.
+- Build only a simple ChatGPT/Gemini wrapper that generates emails while tracking remains manual.
+- Lose track of which team member contacted which company.
+- Allow multiple team members to unknowingly contact the same sponsor.
+- Focus only on UI polish while the actual outreach workflow remains manual.
+- Leave the core sponsorship workflow unimplemented.
+
+
+EVALUATION FOCUS
+
+The solution will be evaluated on:
+
+1. Practical club utility
+2. Quality of personalized outreach
+3. Accuracy of sponsor research
+4. Quality of sponsor categorization
+5. Reliability of tracking
+6. Reliability of follow-ups
+7. Effective human-in-the-loop design
+8. Smart use of free API limits
+9. Technical implementation
+10. Usability
+
+
+FINAL GOAL
+
+The final solution should be a complete, practical, reliable sponsorship outreach system that a college club can realistically adopt for future sponsorship drives.
+
+The system should replace:
+
+- Scattered spreadsheets
+- Forgotten follow-ups
+- Generic mass emails
+- Duplicate outreach
+- Manual sponsor research
+- Manual email tracking
+
+with a centralized intelligent workflow:
+
+Research
+    ↓
+Verify
+    ↓
+Prioritize
+    ↓
+Recommend
+    ↓
+Generate Personalized Email
+    ↓
+Human Review
+    ↓
+Organizer Approval
+    ↓
+Send
+    ↓
+Track Reply
+    ↓
+Follow-up (Maximum 2)
+    ↓
+Interested → Meeting
+    ↓
+Negotiation
+    ↓
+Won / Closed

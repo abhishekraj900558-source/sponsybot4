@@ -1,0 +1,75 @@
+{
+  "research": {
+    "verified": {
+      "website": "https://test.com"
+    },
+    "unverified": {
+      "company_profile": {
+        "value": "Test Company is a company in the Technology sector.",
+        "note": "UNVERIFIED - Demo mode data, not verified from live sources"
+      },
+      "industry": {
+        "value": "Technology",
+        "note": "UNVERIFIED - Demo mode data, not verified from live sources"
+      },
+      "products_services": {
+        "value": "Various products and services",
+        "note": "UNVERIFIED - Demo mode data, not verified from live sources"
+      },
+      "previous_sponsorships": {
+        "value": [
+          "UNVERIFIED - No specific sponsorship history found in demo mode"
+        ],
+        "note": "UNVERIFIED - Demo mode data, not verified from live sources"
+      },
+      "past_events_supported": {
+        "value": "UNVERIFIED - Event sponsorship history not available in demo mode",
+        "note": "UNVERIFIED - Demo mode data, not verified from live sources"
+      },
+      "relevant_partnerships": {
+        "value": "UNVERIFIED - Partnership information not available in demo mode",
+        "note": "UNVERIFIED - Demo mode data, not verified from live sources"
+      },
+      "community_initiatives": {
+        "value": "UNVERIFIED - Community initiatives not verified",
+        "note": "UNVERIFIED - Demo mode data, not verified from live sources"
+      },
+      "student_initiatives": {
+        "value": "UNVERIFIED - Student programs not verified",
+        "note": "UNVERIFIED - Demo mode data, not verified from live sources"
+      },
+      "sponsorship_opportunities": {
+        "value": "Potential: Cash, Swag, Cloud Credits, Software Licenses",
+        "note": "UNVERIFIED - Demo mode data, not verified from live sources"
+      },
+      "size": {
+        "value": "Unknown",
+        "note": "UNVERIFIED - Demo mode data, not verified from live sources"
+      },
+      "headquarters": {
+        "value": "Unknown",
+        "note": "UNVERIFIED - Demo mode data, not verified from live sources"
+      },
+      "founded_year": {
+        "value": "Unknown",
+        "note": "UNVERIFIED - Demo mode data, not verified from live sources"
+      }
+    },
+    "sources": [
+      "Demo mode - simulated data"
+    ],
+    "researched_at": "2026-10-06T09:19:57.451324",
+    "source": "demo"
+  },
+  "prioritization": {
+    "priority_score": 100,
+    "priority_tier": "High",
+    "recommended_types": [
+      "Cash Sponsorship",
+      "Swag / Goodies",
+      "Cloud Credits"
+    ],
+    "reasoning": "[DEMO MODE] Analysis for Test Company (Technology)\nPriority Score: 100/100 → High Priority\n\nReasoning:\n- Strong alignment with event goals and/or proven sponsorship history\n- [UNVERIFIED] Found 5 indicators of community/sponsorship activity in research\n\nRecommended Sponsorship Types:\n- Cash Sponsorship: Matched based on company industry/products\n- Swag / Goodies: Matched based on company industry/products\n- Cloud Credits: Matched based on company industry/products\n\nNote: All research data in demo mode is UNVERIFIED. Verify before outreach.",
+    "confidence": 65
+  }
+}
