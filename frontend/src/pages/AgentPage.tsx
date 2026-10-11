@@ -190,16 +190,7 @@ export function AgentPage() {
           <p className="text-gray-600 mt-1">Autonomous sponsorship outreach workflow</p>
         </div>
         <div className="flex items-center gap-3">
-          {!agentRunning && !Object.keys(agentSponsors).length ? (
-            <button
-              onClick={handleStartAgent}
-              disabled={startAgent.isPending}
-              className="btn-primary"
-            >
-              <PlayIcon className="w-5 h-5 mr-2" />
-              {startAgent.isPending ? 'Starting...' : 'Start Agent'}
-            </button>
-          ) : agentRunning ? (
+          {agentRunning ? (
             <button
               onClick={handleStopAgent}
               disabled={stopAgent.isPending}
@@ -209,9 +200,14 @@ export function AgentPage() {
               {stopAgent.isPending ? 'Stopping...' : 'Stop Agent'}
             </button>
           ) : (
-            <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-              Agent Idle
-            </span>
+            <button
+              onClick={handleStartAgent}
+              disabled={startAgent.isPending}
+              className="btn-primary"
+            >
+              <PlayIcon className="w-5 h-5 mr-2" />
+              {startAgent.isPending ? 'Starting...' : 'Start Agent'}
+            </button>
           )}
         </div>
       </div>

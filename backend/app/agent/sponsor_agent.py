@@ -855,7 +855,7 @@ def approval_node(state: AgentState) -> AgentState:
         ).all()
         
         for email in approved_emails:
-            wf = state.sponsor_workflows.get(email.sponsor_id)
+            wf = state.sponsor_workflows.get(str(email.sponsor_id))
             if wf and email.sponsor_id in state.paused_sponsors:
                 continue
             
@@ -942,7 +942,7 @@ def monitor_replies_node(state: AgentState) -> AgentState:
             if sponsor.id in state.paused_sponsors:
                 continue
             
-            wf = state.sponsor_workflows.get(sponsor.id)
+            wf = state.sponsor_workflows.get(str(sponsor.id))
             if not wf:
                 continue
             
@@ -1331,8 +1331,7 @@ class SponsyBotAgent:
         while self.state.running and iteration < max_iterations:
             iteration += 1
             print(f"[PRINT] Starting iteration {iteration}", flush=True)
-            logger.info("
---- Iteration {iteration} ---".format(iteration=iteration))
+            logger.info(f"\n--- Iteration {iteration} ---")
             
             try:
                 self.run_step()
@@ -1356,7 +1355,7 @@ class SponsyBotAgent:
 
     def get_sponsor_status(self, sponsor_id: int) -> Optional[Dict]:
         """Get workflow status for a sponsor."""
-        wf = self.state.sponsor_workflows.get(sponsor_id)
+        wf = self.state.sponsor_workflows.get(str(sponsor_id))
         if wf:
             return wf.to_dict()
         return None
@@ -1472,7 +1471,7 @@ class SponsyBotAgent:
                 "in_reply_to": in_reply_to
             })
             
-            wf = self.state.sponsor_workflows.get(sponsor_id)
+            wf = self.state.sponsor_workflows.get(str(sponsor_id))
             if wf:
                 wf.reply_received = True
                 wf.reply_classification = ReplyClassification(result.get("classification", "No Reply"))
