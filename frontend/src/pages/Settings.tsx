@@ -15,6 +15,7 @@ import {
   Cog6ToothIcon,
   ChevronDownIcon,
   ChevronUpIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { format } from 'date-fns/format';
 
@@ -37,10 +38,10 @@ export function Settings() {
   });
 
   const { data: teamMembers } = useTeamMembers();
-    const { data: events } = useEvents();
-    const { data: templates } = useEmailTemplates();
-    const { data: memory } = useInstitutionalMemory();
-    const createMemberMutation = useCreateTeamMember();
+  const { data: events } = useEvents();
+  const { data: templates } = useEmailTemplates();
+  const { data: memory } = useInstitutionalMemory();
+  const createMemberMutation = useCreateTeamMember();
   const updateMemberMutation = useUpdateTeamMember();
   const createEventMutation = useCreateEvent();
   const createMemoryMutation = useCreateInstitutionalMemory();
@@ -85,16 +86,21 @@ export function Settings() {
     alert('Delete not yet implemented');
   };
 
+  const clearForm = () => {
+    setEditingItem(null);
+    setFormData({ name: '', email: '', role: '', is_active: true, title: '', description: '', date: '', category: '', key: '', value: '', context: '' });
+  };
+
   const renderTeamContent = () => (
     <>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 animate-fade-in">
         <h2 className="text-lg font-semibold text-gray-900">Team Members</h2>
-        <button onClick={() => { setEditingItem(null); setFormData({ name: '', email: '', role: '', is_active: true }); setShowCreateModal(true); }} className="btn-primary">
-          <PlusIcon className="w-5 h-5 mr-2" />
+        <button onClick={() => { clearForm(); setShowCreateModal(true); }} className="btn-primary group">
+          <PlusIcon className="w-5 h-5 mr-2 group-hover:rotate-90 transition-transform duration-200" />
           Add Member
         </button>
       </div>
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="card overflow-hidden animate-fade-in stagger-1">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -107,8 +113,8 @@ export function Settings() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {(teamMembers as unknown as any[])?.map((member: any) => (
-                <tr key={member.id} className="hover:bg-gray-50">
+              {(teamMembers as unknown as any[])?.map((member: any, index: number) => (
+                <tr key={member.id} className="hover:bg-gray-50 animate-fade-in" style={{ animationDelay: `${index * 0.03}s` }}>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <img
@@ -132,8 +138,8 @@ export function Settings() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => handleEdit(member)} className="text-primary-600 hover:underline text-sm">Edit</button>
-                      <button onClick={() => handleDelete(member.id)} className="text-red-600 hover:underline text-sm">Delete</button>
+                      <button onClick={() => handleEdit(member)} className="text-primary-600 hover:underline text-sm font-medium">Edit</button>
+                      <button onClick={() => handleDelete(member.id)} className="text-red-600 hover:underline text-sm font-medium">Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -142,7 +148,7 @@ export function Settings() {
           </table>
         </div>
         {(!(teamMembers as unknown as any[]) || (teamMembers as unknown as any[]).length === 0) && (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-gray-500 animate-fade-in">
             <UserPlusIcon className="w-12 h-12 mx-auto text-gray-300 mb-4" />
             <p className="text-lg font-medium">No team members yet</p>
             <p className="text-sm mt-1">Add your first team member</p>
@@ -154,14 +160,14 @@ export function Settings() {
 
   const renderEventsContent = () => (
     <>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 animate-fade-in">
         <h2 className="text-lg font-semibold text-gray-900">Events</h2>
-        <button onClick={() => { setEditingItem(null); setFormData({ title: '', description: '', date: '', category: '' }); setShowCreateModal(true); }} className="btn-primary">
-          <PlusIcon className="w-5 h-5 mr-2" />
+        <button onClick={() => { clearForm(); setShowCreateModal(true); }} className="btn-primary group">
+          <PlusIcon className="w-5 h-5 mr-2 group-hover:rotate-90 transition-transform duration-200" />
           Add Event
         </button>
       </div>
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="card overflow-hidden animate-fade-in stagger-1">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -174,8 +180,8 @@ export function Settings() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {(events as unknown as any[])?.map((event: any) => (
-                <tr key={event.id} className="hover:bg-gray-50">
+              {(events as unknown as any[])?.map((event: any, index: number) => (
+                <tr key={event.id} className="hover:bg-gray-50 animate-fade-in" style={{ animationDelay: `${index * 0.03}s` }}>
                   <td className="px-6 py-4 font-medium text-gray-900">{event.title}</td>
                   <td className="px-6 py-4 text-gray-600">{event.date ? format(new Date(event.date), 'MMM d, yyyy HH:mm') : 'TBD'}</td>
                   <td className="px-6 py-4">
@@ -186,8 +192,8 @@ export function Settings() {
                   <td className="px-6 py-4 text-gray-600 line-clamp-1">{event.description || 'No description'}</td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => handleEdit(event)} className="text-primary-600 hover:underline text-sm">Edit</button>
-                      <button onClick={() => handleDelete(event.id)} className="text-red-600 hover:underline text-sm">Delete</button>
+                      <button onClick={() => handleEdit(event)} className="text-primary-600 hover:underline text-sm font-medium">Edit</button>
+                      <button onClick={() => handleDelete(event.id)} className="text-red-600 hover:underline text-sm font-medium">Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -196,7 +202,7 @@ export function Settings() {
           </table>
         </div>
         {(!(events as unknown as any[]) || (events as unknown as any[]).length === 0) && (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-gray-500 animate-fade-in">
             <CalendarDaysIcon className="w-12 h-12 mx-auto text-gray-300 mb-4" />
             <p className="text-lg font-medium">No events yet</p>
             <p className="text-sm mt-1">Add your first event</p>
@@ -208,14 +214,14 @@ export function Settings() {
 
   const renderTemplatesContent = () => (
     <>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 animate-fade-in">
         <h2 className="text-lg font-semibold text-gray-900">Email Templates</h2>
         <button className="btn-primary" disabled>
           <PlusIcon className="w-5 h-5 mr-2" />
           Add Template
         </button>
       </div>
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="card overflow-hidden animate-fade-in stagger-1">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -228,8 +234,8 @@ export function Settings() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {(templates as unknown as any[])?.map((template: any) => (
-                <tr key={template.id} className="hover:bg-gray-50">
+              {(templates as unknown as any[])?.map((template: any, index: number) => (
+                <tr key={template.id} className="hover:bg-gray-50 animate-fade-in" style={{ animationDelay: `${index * 0.03}s` }}>
                   <td className="px-6 py-4 font-medium text-gray-900">{template.name}</td>
                   <td className="px-6 py-4">
                     <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">
@@ -239,7 +245,7 @@ export function Settings() {
                   <td className="px-6 py-4 text-gray-600">{template.subject_template}</td>
                   <td className="px-6 py-4 text-gray-600 text-sm">{template.variables ? (Array.isArray(template.variables) ? template.variables.join(', ') : Object.keys(template.variables).join(', ')) : 'None'}</td>
                   <td className="px-6 py-4 text-right">
-                    <button className="text-primary-600 hover:underline text-sm">View</button>
+                    <button className="text-primary-600 hover:underline text-sm font-medium">View</button>
                   </td>
                 </tr>
               ))}
@@ -247,7 +253,7 @@ export function Settings() {
           </table>
         </div>
         {(!(templates as unknown as any[]) || (templates as unknown as any[]).length === 0) && (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-gray-500 animate-fade-in">
             <DocumentTextIcon className="w-12 h-12 mx-auto text-gray-300 mb-4" />
             <p className="text-lg font-medium">No templates yet</p>
             <p className="text-sm mt-1">Templates are managed via API</p>
@@ -259,14 +265,14 @@ export function Settings() {
 
   const renderMemoryContent = () => (
     <>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 animate-fade-in">
         <h2 className="text-lg font-semibold text-gray-900">Institutional Memory</h2>
-        <button onClick={() => { setEditingItem(null); setFormData({ key: '', value: '', context: '' }); setShowCreateModal(true); }} className="btn-primary">
-          <PlusIcon className="w-5 h-5 mr-2" />
+        <button onClick={() => { clearForm(); setShowCreateModal(true); }} className="btn-primary group">
+          <PlusIcon className="w-5 h-5 mr-2 group-hover:rotate-90 transition-transform duration-200" />
           Add Entry
         </button>
       </div>
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="card overflow-hidden animate-fade-in stagger-1">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -279,8 +285,8 @@ export function Settings() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {(memory as unknown as any[])?.map((item: any) => (
-                <tr key={item.id} className="hover:bg-gray-50">
+              {(memory as unknown as any[])?.map((item: any, index: number) => (
+                <tr key={item.id} className="hover:bg-gray-50 animate-fade-in" style={{ animationDelay: `${index * 0.03}s` }}>
                   <td className="px-6 py-4 font-medium text-gray-900 font-mono text-sm">{item.key}</td>
                   <td className="px-6 py-4">
                     <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">
@@ -291,8 +297,8 @@ export function Settings() {
                   <td className="px-6 py-4 text-gray-600 text-sm">{item.updated_at ? format(new Date(item.updated_at), 'MMM d, yyyy') : ''}</td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => handleEdit(item)} className="text-primary-600 hover:underline text-sm">Edit</button>
-                      <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:underline text-sm">Delete</button>
+                      <button onClick={() => handleEdit(item)} className="text-primary-600 hover:underline text-sm font-medium">Edit</button>
+                      <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:underline text-sm font-medium">Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -301,7 +307,7 @@ export function Settings() {
           </table>
         </div>
         {(!(memory as unknown as any[]) || (memory as unknown as any[]).length === 0) && (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-gray-500 animate-fade-in">
             <BuildingOfficeIcon className="w-12 h-12 mx-auto text-gray-300 mb-4" />
             <p className="text-lg font-medium">No institutional memory entries</p>
             <p className="text-sm mt-1">Add your first entry to build organizational knowledge</p>
@@ -312,20 +318,20 @@ export function Settings() {
   );
 
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="space-y-6 animate-fade-in">
+      <div className="animate-slide-in-left">
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="text-gray-600 mt-1">Manage team, events, templates, and institutional memory</p>
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200 mb-6">
+      <div className="border-b border-gray-200 mb-6 animate-fade-in stagger-1">
         <nav className="flex gap-8" aria-label="Settings tabs">
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => { setActiveTab(tab.id); setEditingItem(null); }}
-              className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+              onClick={() => { setActiveTab(tab.id); clearForm(); }}
+              className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-all duration-200 ${
                 activeTab === tab.id
                   ? 'border-primary-600 text-primary-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -339,7 +345,7 @@ export function Settings() {
       </div>
 
       {/* Tab Content */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="animate-fade-in stagger-2">
         {activeTab === 'team' && renderTeamContent()}
         {activeTab === 'events' && renderEventsContent()}
         {activeTab === 'templates' && renderTemplatesContent()}
@@ -348,16 +354,14 @@ export function Settings() {
 
       {/* Create/Edit Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50">
-          <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 animate-fade-in">
+          <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-scale-in">
             <div className="p-6 border-b border-gray-200 flex items-center justify-between">
               <h2 className="text-xl font-bold text-gray-900">
                 {editingItem ? `Edit ${activeTab === 'team' ? 'Team Member' : activeTab === 'events' ? 'Event' : 'Memory Entry'}` : `Add ${activeTab === 'team' ? 'Team Member' : activeTab === 'events' ? 'Event' : 'Memory Entry'}`}
               </h2>
-              <button onClick={() => { setShowCreateModal(false); setEditingItem(null); }} className="text-gray-400 hover:text-gray-600">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+              <button onClick={() => { setShowCreateModal(false); clearForm(); }} className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition-colors">
+                <XMarkIcon className="w-6 h-6" />
               </button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
@@ -371,7 +375,7 @@ export function Settings() {
                         value={formData.name}
                         onChange={(e) => setFormData({...formData, name: e.target.value})}
                         required
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        className="input-base"
                       />
                     </div>
                     <div>
@@ -381,7 +385,7 @@ export function Settings() {
                         value={formData.email}
                         onChange={(e) => setFormData({...formData, email: e.target.value})}
                         required
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        className="input-base"
                       />
                     </div>
                   </div>
@@ -393,7 +397,7 @@ export function Settings() {
                         value={formData.role}
                         onChange={(e) => setFormData({...formData, role: e.target.value})}
                         required
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        className="input-base"
                       />
                     </div>
                     <div>
@@ -401,7 +405,7 @@ export function Settings() {
                       <select
                         value={formData.is_active.toString()}
                         onChange={(e) => setFormData({...formData, is_active: e.target.value === 'true'})}
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        className="input-base bg-white"
                       >
                         <option value="true">Active</option>
                         <option value="false">Inactive</option>
@@ -420,7 +424,7 @@ export function Settings() {
                       value={formData.title}
                       onChange={(e) => setFormData({...formData, title: e.target.value})}
                       required
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      className="input-base"
                     />
                   </div>
                   <div>
@@ -429,7 +433,7 @@ export function Settings() {
                       value={formData.description}
                       onChange={(e) => setFormData({...formData, description: e.target.value})}
                       rows={3}
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      className="input-base"
                     />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -439,7 +443,7 @@ export function Settings() {
                         type="datetime-local"
                         value={formData.date}
                         onChange={(e) => setFormData({...formData, date: e.target.value})}
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        className="input-base"
                       />
                     </div>
                     <div>
@@ -448,7 +452,7 @@ export function Settings() {
                         type="text"
                         value={formData.category}
                         onChange={(e) => setFormData({...formData, category: e.target.value})}
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        className="input-base"
                         placeholder="e.g., Conference, Meetup, Webinar"
                       />
                     </div>
@@ -465,7 +469,7 @@ export function Settings() {
                       value={formData.key}
                       onChange={(e) => setFormData({...formData, key: e.target.value})}
                       required
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      className="input-base"
                       placeholder="e.g., sponsor_preferences, email_best_practices"
                     />
                   </div>
@@ -475,7 +479,7 @@ export function Settings() {
                       type="text"
                       value={formData.context}
                       onChange={(e) => setFormData({...formData, context: e.target.value})}
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      className="input-base"
                       placeholder="e.g., general, outreach, negotiation"
                     />
                   </div>
@@ -486,7 +490,7 @@ export function Settings() {
                       onChange={(e) => setFormData({...formData, value: e.target.value})}
                       required
                       rows={6}
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      className="input-base"
                       placeholder="Enter the knowledge/preference/guideline..."
                     />
                   </div>
@@ -494,10 +498,10 @@ export function Settings() {
               )}
 
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-                <button type="button" onClick={() => { setShowCreateModal(false); setEditingItem(null); }} className="btn-secondary">
+                <button type="button" onClick={() => { setShowCreateModal(false); clearForm(); }} className="btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary">
+                <button type="submit" className="btn-primary" disabled={createMemberMutation.isPending || updateMemberMutation.isPending || createEventMutation.isPending || createMemoryMutation.isPending}>
                   {editingItem ? 'Update' : 'Create'}
                 </button>
               </div>

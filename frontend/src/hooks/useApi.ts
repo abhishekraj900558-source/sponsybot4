@@ -1,6 +1,46 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as api from '../api/endpoints';
 
+// Agent Status types
+export interface SponsorWorkflowStatus {
+  sponsor_id: number;
+  company_name: string;
+  stage: string;
+  email_type: string;
+  follow_up_number: number;
+  approval_status: string | null;
+  reply_received: boolean;
+  reply_classification: string | null;
+  follow_ups_sent: number;
+  sponsorship_won: boolean;
+  error: string | null;
+  meeting_id: number | null;
+  meeting_status: string | null;
+}
+
+export interface AgentStatusResponse {
+  status: string;
+  running: boolean;
+  campaign: string;
+  event_id: number | null;
+  stats: Record<string, number>;
+  historical_stats: Record<string, number>;
+  current_run_stats: Record<string, number>;
+  sponsors: Record<string, SponsorWorkflowStatus>;
+  current_activity: string;
+  current_stage: string;
+  activity_log: Array<{
+    timestamp: string;
+    message: string;
+    stage: string;
+    sponsor: string | null;
+    error?: boolean;
+  }>;
+  error: string | null;
+  campaign_name?: string;
+  paused_sponsors?: number[];
+}
+
 // Query keys
 export const queryKeys = {
   sponsors: ['sponsors'] as const,
@@ -505,9 +545,9 @@ const agentQueryKeys = {
 };
 
 export function useAgentStatus() {
-  return useQuery({
+  return useQuery<AgentStatusResponse>({
     queryKey: agentQueryKeys.status,
-    queryFn: () => api.agentApi.status().then(res => res.data),
+    queryFn: () => api.agentApi.status() as unknown as Promise<AgentStatusResponse>,
     refetchInterval: 5000, // Poll every 5 seconds
   });
 }

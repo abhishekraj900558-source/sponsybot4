@@ -417,12 +417,18 @@ app.include_router(api_router, prefix="/api")
 # Agent Control Endpoints
 # ============================================================
 
+from pydantic import BaseModel
+
+class AgentStartRequest(BaseModel):
+    event_id: int | None = None
+    campaign_name: str = "Sponsorship Campaign"
+    max_iterations: int = 1000
+    interval: int = 300
+
+
 @app.post("/api/agent/start")
 def start_agent(
-    event_id: int = None,
-    campaign_name: str = "Sponsorship Campaign",
-    max_iterations: int = 1000,
-    interval: int = 300,
+    request: AgentStartRequest,
     background_tasks: BackgroundTasks = None
 ):
     """Start the SponsyBot agent in background."""
@@ -431,21 +437,21 @@ def start_agent(
     if agent_instance and agent_thread and agent_thread.is_alive():
         return {"status": "already_running", "message": "Agent is already running"}
     
-    agent = SponsyBotAgent(event_id=event_id, campaign_name=campaign_name)
+    agent = SponsyBotAgent(event_id=request.event_id, campaign_name=request.campaign_name)
     agent.load_sponsors()
     
     # Run in background thread
     agent_thread = threading.Thread(
         target=run_agent_background,
-        args=(agent, max_iterations, interval),
+        args=(agent, request.max_iterations, request.interval),
         daemon=True
     )
     agent_thread.start()
     
     return {
         "status": "started",
-        "campaign": campaign_name,
-        "event_id": event_id,
+        "campaign": request.campaign_name,
+        "event_id": request.event_id,
         "sponsors_loaded": agent.state.stats["total"]
     }
 
@@ -453,11 +459,17 @@ def start_agent(
 @app.post("/api/agent/stop")
 def stop_agent():
     """Stop the SponsyBot agent."""
-    global agent_instance
+    global agent_instance, agent_thread
     
     if agent_instance:
         agent_instance.state.running = False
-        return {"status": "stopping", "message": "Agent will stop after current iteration"}
+        # Wait for thread to finish (with timeout)
+        if agent_thread and agent_thread.is_alive():
+            agent_thread.join(timeout=5)
+        # Clean up globals
+        agent_instance = None
+        agent_thread = None
+        return {"status": "stopped", "message": "Agent stopped"}
     
     return {"status": "not_running", "message": "No agent running"}
 
@@ -466,21 +478,156 @@ def stop_agent():
 def get_agent_status():
     """Get current agent status."""
     global agent_instance
+    from app.database import SessionLocal
+    from app.models import Sponsor, SponsorStatus, EmailLog, EmailStatus, ReplyLog, ReplyClassification, Meeting
     
-    if not agent_instance:
-        return {"status": "stopped", "running": False}
-    
-    return {
-        "status": "running" if agent_instance.state.running else "stopped",
-        "running": agent_instance.state.running,
-        "campaign": agent_instance.campaign_name,
-        "event_id": agent_instance.event_id,
-        "stats": agent_instance.state.stats,
-        "sponsors": {
-            sid: wf.to_dict() 
-            for sid, wf in agent_instance.state.sponsor_workflows.items()
+    db = SessionLocal()
+    try:
+        # Always load sponsors from database
+        sponsors = db.query(Sponsor).filter(Sponsor.status != SponsorStatus.CLOSED).all()
+        
+        # Build base sponsor data from database
+        sponsor_data = {}
+        for sponsor in sponsors:
+            # Get latest email for this sponsor
+            latest_email = db.query(EmailLog).filter(
+                EmailLog.sponsor_id == sponsor.id
+            ).order_by(EmailLog.created_at.desc()).first()
+            
+            # Get latest reply
+            latest_reply = db.query(ReplyLog).filter(
+                ReplyLog.sponsor_id == sponsor.id
+            ).order_by(ReplyLog.received_at.desc()).first()
+            
+            # Get meeting
+            meeting = db.query(Meeting).filter(
+                Meeting.sponsor_id == sponsor.id
+            ).order_by(Meeting.created_at.desc()).first()
+            
+            sponsor_data[str(sponsor.id)] = {
+                "sponsor_id": sponsor.id,
+                "company_name": sponsor.company_name,
+                "stage": sponsor.status.value,
+                "email_type": latest_email.email_type if latest_email else "initial",
+                "follow_up_number": latest_email.follow_up_number if latest_email else 0,
+                "approval_status": latest_email.status.value if latest_email else None,
+                "reply_received": latest_reply is not None,
+                "reply_classification": latest_reply.classification.value if latest_reply and latest_reply.classification else None,
+                "follow_ups_sent": sponsor.follow_up_count,
+                "sponsorship_won": sponsor.sponsorship_won,
+                "error": None,
+                "meeting_id": meeting.id if meeting else None,
+                "meeting_status": meeting.status.value if meeting else None,
+            }
+        
+        # Compute historical stats from database only
+        historical_stats = _compute_stats(db, sponsor_data)
+        
+        if not agent_instance:
+            return {
+                "status": "stopped",
+                "running": False,
+                "campaign": "",
+                "event_id": None,
+                "stats": historical_stats,
+                "historical_stats": historical_stats,
+                "current_run_stats": {},
+                "sponsors": sponsor_data,
+                "current_activity": "",
+                "current_stage": "",
+                "activity_log": [],
+                "error": None
+            }
+        
+        # Merge agent workflow state with database data for sponsor display
+        # Only overwrite with agent state for sponsors that have been processed (stage != init)
+        # Preserve database stage for unprocessed sponsors
+        merged_sponsors = {**sponsor_data}
+        for sid, wf in agent_instance.state.sponsor_workflows.items():
+            agent_wf_dict = wf.to_dict()
+            if sid in merged_sponsors:
+                # Only update stage if agent has actually processed this sponsor
+                agent_stage = agent_wf_dict.get("stage", "init")
+                if agent_stage != "init":
+                    merged_sponsors[sid].update(agent_wf_dict)
+                else:
+                    # For unprocessed sponsors, only update specific fields, not stage
+                    update_fields = ["current_email_id", "email_type", "follow_up_number",
+                                   "approval_status", "reply_received", "reply_classification",
+                                   "reply_summary", "follow_ups_sent", "meeting_id",
+                                   "meeting_status", "sponsorship_won", "error"]
+                    for field in update_fields:
+                        if field in agent_wf_dict:
+                            merged_sponsors[sid][field] = agent_wf_dict[field]
+            else:
+                merged_sponsors[sid] = agent_wf_dict
+        
+        # Current run stats from agent
+        current_run_stats = agent_instance.state.stats
+        
+        # Combined stats for backward compatibility (historical + current run)
+        combined_stats = {}
+        # Only add truly incremental fields from current run
+        incremental_fields = {"emails_generated", "emails_sent", "meetings_scheduled", "sponsorships_won", "researched", "prioritized"}
+        for key in historical_stats:
+            if key in incremental_fields:
+                combined_stats[key] = historical_stats[key] + current_run_stats.get(key, 0)
+            else:
+                combined_stats[key] = historical_stats[key]
+        
+        return {
+            "status": "running" if agent_instance.state.running else "stopped",
+            "running": agent_instance.state.running,
+            "campaign": agent_instance.campaign_name,
+            "event_id": agent_instance.event_id,
+            "stats": combined_stats,
+            "historical_stats": historical_stats,
+            "current_run_stats": current_run_stats,
+            "sponsors": merged_sponsors,
+            "current_activity": agent_instance.state.current_activity,
+            "current_stage": agent_instance.state.current_stage,
+            "activity_log": agent_instance.state.activity_log,
+            "error": agent_instance.state.error
         }
+    finally:
+        db.close()
+
+def _compute_stats(db, sponsor_data):
+    """Compute stats from sponsor data."""
+    stats = {
+        "total": len(sponsor_data),
+        "researched": 0,
+        "prioritized": 0,
+        "emails_generated": 0,
+        "emails_sent": 0,
+        "replies_received": 0,
+        "interested": 0,
+        "declined": 0,
+        "meetings_scheduled": 0,
+        "sponsorships_won": 0,
     }
+    
+    for wf in sponsor_data.values():
+        if wf.get("stage") != "init":
+            stats["researched"] += 1
+        if wf.get("stage") in ["prioritize", "generate_emails", "pending_approval", "sending", "waiting_for_reply", "follow_up", "meeting", "completed"]:
+            stats["prioritized"] += 1
+        if wf.get("email_type") and wf.get("approval_status") in ["Approved", "Sent"]:
+            stats["emails_generated"] += 1
+        if wf.get("approval_status") == "Sent":
+            stats["emails_sent"] += 1
+        if wf.get("reply_received"):
+            stats["replies_received"] += 1
+        if wf.get("reply_classification") == "Interested":
+            stats["interested"] += 1
+        elif wf.get("reply_classification") == "Declined":
+            stats["declined"] += 1
+        if wf.get("meeting_id"):
+            stats["meetings_scheduled"] += 1
+        if wf.get("sponsorship_won"):
+            stats["sponsorships_won"] += 1
+    
+    return stats
 
 
 @app.post("/api/agent/pause/{sponsor_id}")

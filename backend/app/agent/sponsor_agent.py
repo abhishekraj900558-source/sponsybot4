@@ -164,6 +164,12 @@ class AgentState:
         "meetings_scheduled": 0,
         "sponsorships_won": 0,
     })
+    
+    # Activity logging
+    activity_log: List[Dict] = field(default_factory=list)
+    current_activity: str = ""
+    current_stage: str = ""
+    error: Optional[str] = None
 
 
 # ============================================================
@@ -579,6 +585,15 @@ def update_institutional_memory_tool(
 
 def research_node(state: AgentState) -> AgentState:
     """Research all sponsors that need it."""
+    from datetime import datetime
+    state.current_stage = "research"
+    state.current_activity = "Researching sponsors..."
+    state.activity_log.append({
+        "timestamp": datetime.utcnow().isoformat(),
+        "message": "Starting research phase",
+        "stage": "research",
+        "sponsor": None
+    })
     logger.info("??? Research node: researching sponsors...")
     
     # Get sponsor IDs from workflow state
@@ -624,15 +639,37 @@ def research_node(state: AgentState) -> AgentState:
                 wf.stage = WorkflowStage.RESEARCH
                 state.stats["researched"] += 1
                 
+                state.activity_log.append({
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "message": f"Researched {sponsor.company_name}",
+                    "stage": "research",
+                    "sponsor": sponsor.company_name
+                })
                 logger.info(f"  ??? Researched {sponsor.company_name}")
             except Exception as e:
                 logger.error(f"  ??? Research failed for {sponsor.company_name}: {e}")
+                state.activity_log.append({
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "message": f"Research failed for {sponsor.company_name}: {e}",
+                    "stage": "research",
+                    "sponsor": sponsor.company_name,
+                    "error": True
+                })
     
     return state
 
 
 def prioritize_node(state: AgentState) -> AgentState:
     """Prioritize all researched sponsors."""
+    from datetime import datetime
+    state.current_stage = "prioritize"
+    state.current_activity = "Prioritizing sponsors..."
+    state.activity_log.append({
+        "timestamp": datetime.utcnow().isoformat(),
+        "message": "Starting prioritization phase",
+        "stage": "prioritize",
+        "sponsor": None
+    })
     logger.info("???? Prioritize node: scoring sponsors...")
     
     with get_db_context() as db:
@@ -704,15 +741,37 @@ def prioritize_node(state: AgentState) -> AgentState:
                 wf.stage = WorkflowStage.PRIORITIZE
                 state.stats["prioritized"] += 1
                 
+                state.activity_log.append({
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "message": f"Prioritized {sponsor.company_name}: {result.priority_score} ({result.priority_tier})",
+                    "stage": "prioritize",
+                    "sponsor": sponsor.company_name
+                })
                 logger.info(f"  ??? Prioritized {sponsor.company_name}: {result.priority_score} ({result.priority_tier})")
             except Exception as e:
                 logger.error(f"  ??? Prioritization failed for {sponsor.company_name}: {e}")
+                state.activity_log.append({
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "message": f"Prioritization failed for {sponsor.company_name}: {e}",
+                    "stage": "prioritize",
+                    "sponsor": sponsor.company_name,
+                    "error": True
+                })
     
     return state
 
 
 def generate_emails_node(state: AgentState) -> AgentState:
     """Generate initial email drafts for prioritized sponsors."""
+    from datetime import datetime
+    state.current_stage = "generate_emails"
+    state.current_activity = "Generating email drafts..."
+    state.activity_log.append({
+        "timestamp": datetime.utcnow().isoformat(),
+        "message": "Starting email generation phase",
+        "stage": "generate_emails",
+        "sponsor": None
+    })
     logger.info("?????? Generate emails node: creating drafts...")
     
     sponsor_ids = [int(sid) for sid in state.sponsor_workflows.keys()]
@@ -814,6 +873,13 @@ def generate_emails_node(state: AgentState) -> AgentState:
                 db.commit()
                 db.refresh(email_log)
                 
+                state.activity_log.append({
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "message": f"Generated initial email draft for {sponsor.company_name}",
+                    "stage": "generate_emails",
+                    "sponsor": sponsor.company_name
+                })
+                
                 sid = str(sponsor.id)
                 if sid not in state.sponsor_workflows:
                     state.sponsor_workflows[sid] = SponsorWorkflowState(
@@ -844,6 +910,15 @@ def generate_emails_node(state: AgentState) -> AgentState:
 
 def approval_node(state: AgentState) -> AgentState:
     """Check for approved emails and send them."""
+    from datetime import datetime
+    state.current_stage = "approval"
+    state.current_activity = "Checking for approved emails..."
+    state.activity_log.append({
+        "timestamp": datetime.utcnow().isoformat(),
+        "message": "Starting approval phase",
+        "stage": "approval",
+        "sponsor": None
+    })
     logger.info("??? Approval node: checking for approved emails...")
     
     sponsor_ids = [int(sid) for sid in state.sponsor_workflows.keys()]
@@ -891,6 +966,15 @@ def approval_node(state: AgentState) -> AgentState:
                         sponsor.status = SponsorStatus.CONTACTED
                     elif sponsor.status == SponsorStatus.FOLLOW_UP:
                         sponsor.status = SponsorStatus.FOLLOW_UP
+                    
+                    state.activity_log.append({
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "message": f"Sent email to {sponsor.company_name}",
+                        "stage": "approval",
+                        "sponsor": sponsor.company_name
+                    })
+                    
+                    state.stats["emails_sent"] += 1
                     
                     if email.follow_up_number == 0:
                         followup_service = FollowUpService(db)
@@ -1054,26 +1138,19 @@ def meeting_node(state: AgentState) -> AgentState:
     logger.info("???? Meeting node: processing interested sponsors...")
     
     with get_db_context() as db:
+        # Only process sponsors that don't already have a meeting
+        subquery = db.query(Meeting.sponsor_id).filter(
+            Meeting.status.in_([MeetingStatus.REQUESTED, MeetingStatus.SCHEDULED])
+        ).subquery()
+        
         interested_sponsors = db.query(Sponsor).filter(
             Sponsor.status == SponsorStatus.INTERESTED,
-            Sponsor.meeting_status == MeetingStatus.REQUESTED
+            Sponsor.meeting_status == MeetingStatus.REQUESTED,
+            ~Sponsor.id.in_(subquery)
         ).all()
         
         for sponsor in interested_sponsors:
             if sponsor.id in state.paused_sponsors:
-                continue
-            
-            # Check if meeting already exists in database
-            existing_meeting = db.query(Meeting).filter(
-                Meeting.sponsor_id == sponsor.id,
-                Meeting.status.in_([MeetingStatus.REQUESTED, MeetingStatus.SCHEDULED])
-            ).first()
-            if existing_meeting:
-                # Update workflow state
-                wf = state.sponsor_workflows.get(str(sponsor.id))
-                if wf:
-                    wf.meeting_id = existing_meeting.id
-                    wf.meeting_status = existing_meeting.status
                 continue
             
             wf = state.sponsor_workflows.get(str(sponsor.id))
@@ -1281,6 +1358,10 @@ class SponsyBotAgent:
             self.state.running = result.get('running', self.state.running)
             self.state.paused_sponsors = result.get('paused_sponsors', self.state.paused_sponsors)
             self.state.stats = result.get('stats', self.state.stats)
+            self.state.activity_log = result.get('activity_log', self.state.activity_log)
+            self.state.current_activity = result.get('current_activity', self.state.current_activity)
+            self.state.current_stage = result.get('current_stage', self.state.current_stage)
+            self.state.error = result.get('error', self.state.error)
             # sponsor_workflows needs special handling - they are SponsorWorkflowState objects
             if 'sponsor_workflows' in result:
                 for sid, wf_obj in result['sponsor_workflows'].items():
@@ -1342,7 +1423,11 @@ class SponsyBotAgent:
                 if self.state.running:
                     print(f"[PRINT] Sleeping {interval_seconds}s", flush=True)
                     logger.info(f"??? Waiting {interval_seconds}s before next cycle...")
-                    time.sleep(interval_seconds)
+                    # Sleep in small chunks to allow checking running flag
+                    for _ in range(interval_seconds):
+                        if not self.state.running:
+                            break
+                        time.sleep(1)
             except Exception as e:
                 print(f"[PRINT] Exception in iteration: {e}", flush=True)
                 logger.error(f"Agent error: {e}")
@@ -1353,6 +1438,25 @@ class SponsyBotAgent:
         return self.state
 
 
+    def log_activity(self, message: str, sponsor_name: str = None, stage: str = None):
+        """Log an activity to the agent's activity log."""
+        from datetime import datetime
+        activity = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "message": message,
+            "sponsor": sponsor_name,
+            "stage": stage or self.state.current_stage,
+        }
+        self.state.activity_log.append(activity)
+        # Keep only last 100 activities
+        if len(self.state.activity_log) > 100:
+            self.state.activity_log = self.state.activity_log[-100:]
+        
+        if stage:
+            self.state.current_stage = stage
+        self.state.current_activity = message
+        logger.info(f"Activity: {message} | Sponsor: {sponsor_name} | Stage: {stage}")
+    
     def get_sponsor_status(self, sponsor_id: int) -> Optional[Dict]:
         """Get workflow status for a sponsor."""
         wf = self.state.sponsor_workflows.get(str(sponsor_id))
