@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useMeetings } from '../hooks/useApi';
-import { PlusIcon, MagnifyingGlassIcon, FunnelIcon, ArrowPathIcon, EnvelopeOpenIcon } from '@heroicons/react/24/outline';
+import { useSponsors } from '../hooks/useApi';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import api from '../api/client';
+import { PlusIcon, MagnifyingGlassIcon, ArrowPathIcon, EnvelopeOpenIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import { format } from 'date-fns/format';
 
 const statusColors = {
   Draft: 'bg-gray-100 text-gray-700',
+  DRAFT: 'bg-gray-100 text-gray-700',
   'Pending Approval': 'bg-yellow-100 text-yellow-800',
   Approved: 'bg-green-100 text-green-800',
   Sent: 'bg-blue-100 text-blue-800',
@@ -16,10 +19,12 @@ const statusColors = {
 const tabs = ['All', 'Drafts', 'Pending Approval', 'Sent', 'Failed'];
 
 export function Emails() {
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [activeTab, setActiveTab] = useState('Drafts');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [newEmail, setNewEmail] = useState({
     sponsor_id: '',
     email_type: 'initial',
@@ -29,35 +34,85 @@ export function Emails() {
     body: '',
   });
 
-  // Mock data for now - replace with actual API call
-  const { data: meetingsData } = useMeetings();
-  
-  // For demo, we'll use mock emails since we don't have a global emails list endpoint
-  const mockEmails = [
-    { id: 1, sponsor_name: 'TechCorp Inc', subject: 'Partnership Opportunity with TechCorp', status: 'Sent', email_type: 'initial', created_at: '2024-01-15T10:30:00Z', sponsor_id: 1 },
-    { id: 2, sponsor_name: 'GlobalSoft Ltd', subject: 'Follow-up: Sponsorship Proposal', status: 'Pending Approval', email_type: 'follow_up_1', created_at: '2024-01-14T14:20:00Z', sponsor_id: 2 },
-    { id: 3, sponsor_name: 'DataSystems Co', subject: 'Initial Outreach - Event Sponsorship', status: 'Draft', email_type: 'initial', created_at: '2024-01-13T09:15:00Z', sponsor_id: 3 },
-    { id: 4, sponsor_name: 'CloudNine Inc', subject: 'Meeting Request: Q1 Partnership', status: 'Approved', email_type: 'meeting_request', created_at: '2024-01-12T16:45:00Z', sponsor_id: 4 },
-    { id: 5, sponsor_name: 'AI Solutions', subject: 'Follow-up 2: Sponsorship Discussion', status: 'Failed', email_type: 'follow_up_2', created_at: '2024-01-11T11:00:00Z', sponsor_id: 5 },
-  ];
+  const { data: sponsorsData } = useSponsors({ page_size: 100 });
+  const sponsorsList: any[] = Array.isArray(sponsorsData)
+    ? sponsorsData
+    : ((sponsorsData as any)?.sponsors || []);
 
-  const filteredEmails = mockEmails.filter((email) => {
-    const matchesSearch = email.sponsor_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      email.subject.toLowerCase().includes(searchQuery.toLowerCase());
+  const { data: realEmails, isLoading: emailsLoading, refetch: refetchEmails } = useQuery({
+    queryKey: ['emails'],
+    queryFn: () => api.get('/emails'),
+  });
+
+  const emailsList: any[] = Array.isArray(realEmails) ? realEmails : [];
+
+  const filteredEmails = emailsList.filter((email) => {
+    const matchesSearch = (email.sponsor_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (email.subject || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'All' || email.status === statusFilter;
     const matchesTab = activeTab === 'All' || email.status === activeTab || 
-      (activeTab === 'Drafts' && email.status === 'Draft') ||
+      (activeTab === 'Drafts' && (email.status === 'Draft' || email.status === 'DRAFT')) ||
       (activeTab === 'Pending Approval' && email.status === 'Pending Approval') ||
       (activeTab === 'Sent' && email.status === 'Sent') ||
       (activeTab === 'Failed' && (email.status === 'Failed' || email.status === 'Rejected'));
     return matchesSearch && matchesStatus && matchesTab;
   });
 
+  const handleGenerateAi = async () => {
+    if (!newEmail.sponsor_id) {
+      alert('Please select a sponsor from the dropdown first.');
+      return;
+    }
+    try {
+      setIsGeneratingAi(true);
+      const res: any = await api.post('/email-draft', {
+        companyId: Number(newEmail.sponsor_id),
+        eventName: 'AI/ML Hackathon',
+        audience: 'College students',
+        emailType: newEmail.email_type,
+      });
+      const draft = res?.data || res;
+      setNewEmail(prev => ({
+        ...prev,
+        subject: draft.subject || '',
+        body: draft.body || '',
+      }));
+      queryClient.invalidateQueries({ queryKey: ['emails'] });
+      alert('AI draft generated! Review or modify the content, then click Create Draft.');
+    } catch (err: any) {
+      alert(err.response?.data?.error || err.message || 'Failed to generate draft with AI');
+    } finally {
+      setIsGeneratingAi(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Implement create email via API
-    setShowCreateModal(false);
-    setNewEmail({ sponsor_id: '', email_type: 'initial', event_id: '', sender_id: 1, subject: '', body: '' });
+    if (!newEmail.sponsor_id) {
+      alert('Please select a sponsor.');
+      return;
+    }
+    if (!newEmail.subject.trim() || !newEmail.body.trim()) {
+      alert('Please fill in both subject and body, or click Auto-Generate with AI.');
+      return;
+    }
+    try {
+      await api.post('/emails', {
+        sponsor_id: Number(newEmail.sponsor_id),
+        email_type: newEmail.email_type,
+        event_id: newEmail.event_id ? Number(newEmail.event_id) : undefined,
+        sender_id: newEmail.sender_id,
+        subject: newEmail.subject.trim(),
+        body: newEmail.body.trim(),
+      });
+      queryClient.invalidateQueries({ queryKey: ['emails'] });
+      setShowCreateModal(false);
+      setNewEmail({ sponsor_id: '', email_type: 'initial', event_id: '', sender_id: 1, subject: '', body: '' });
+      refetchEmails();
+      alert('Email draft created successfully!');
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to create email draft');
+    }
   };
 
   return (
@@ -212,8 +267,8 @@ export function Emails() {
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   >
                     <option value="">Select sponsor</option>
-                    {(meetingsData as unknown as any[])?.map((m: any) => (
-                      <option key={m.id} value={m.sponsor_id}>{m.sponsor_name || `Sponsor ${m.sponsor_id}`}</option>
+                    {sponsorsList.map((s: any) => (
+                      <option key={s.id} value={s.id}>{s.company_name || s.name || `Sponsor ${s.id}`}</option>
                     ))}
                   </select>
                 </div>
@@ -253,6 +308,23 @@ export function Emails() {
                   />
                 </div>
               </div>
+
+              <div className="bg-primary-50 border border-primary-200 rounded-lg p-3 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-primary-900">Want Gemini AI to write the draft?</p>
+                  <p className="text-xs text-primary-700">Select a sponsor above and click to generate personalized outreach</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleGenerateAi}
+                  disabled={isGeneratingAi || !newEmail.sponsor_id}
+                  className="btn-primary text-xs py-1.5 px-3 whitespace-nowrap flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <SparklesIcon className="w-4 h-4" />
+                  {isGeneratingAi ? 'Generating...' : 'Auto-Generate with AI'}
+                </button>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Subject *</label>
                 <input

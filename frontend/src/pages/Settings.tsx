@@ -2,19 +2,10 @@ import React, { useState } from 'react';
 import { useTeamMembers, useCreateTeamMember, useUpdateTeamMember, useEvents, useCreateEvent, useInstitutionalMemory, useCreateInstitutionalMemory, useEmailTemplates } from '../hooks/useApi';
 import {
   PlusIcon,
-  MagnifyingGlassIcon,
-  FunnelIcon,
-  ArrowPathIcon,
   UserPlusIcon,
-  UserMinusIcon,
-  PencilIcon,
-  TrashIcon,
   BuildingOfficeIcon,
   CalendarDaysIcon,
   DocumentTextIcon,
-  Cog6ToothIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { format } from 'date-fns/format';
@@ -182,11 +173,11 @@ export function Settings() {
             <tbody className="divide-y divide-gray-100">
               {(events as unknown as any[])?.map((event: any, index: number) => (
                 <tr key={event.id} className="hover:bg-gray-50 animate-fade-in" style={{ animationDelay: `${index * 0.03}s` }}>
-                  <td className="px-6 py-4 font-medium text-gray-900">{event.title}</td>
-                  <td className="px-6 py-4 text-gray-600">{event.date ? format(new Date(event.date), 'MMM d, yyyy HH:mm') : 'TBD'}</td>
+                  <td className="px-6 py-4 font-medium text-gray-900">{event.title || event.name || 'Untitled Event'}</td>
+                  <td className="px-6 py-4 text-gray-600">{(event.date || event.start_date) ? format(new Date(event.date || event.start_date), 'MMM d, yyyy HH:mm') : 'TBD'}</td>
                   <td className="px-6 py-4">
                     <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">
-                      {event.category || 'General'}
+                      {event.category || event.location || 'General'}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-gray-600 line-clamp-1">{event.description || 'No description'}</td>

@@ -15,10 +15,6 @@ import {
   CalendarDaysIcon,
   BuildingOfficeIcon,
   ExclamationCircleIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
-  EyeIcon,
-  DocumentTextIcon,
   PauseIcon,
   ArrowPathIcon,
   SparklesIcon,
@@ -146,9 +142,6 @@ export function SponsorWorkflowCard({
   ];
 
   const currentStepIndex = workflowSteps.findIndex(s => s.key === workflow.stage);
-  const completedSteps = workflowSteps.slice(0, currentStepIndex + 1).filter(s => 
-    ['research', 'prioritize', 'generate_emails', 'pending_approval', 'sending', 'waiting_for_reply', 'follow_up', 'meeting'].includes(s.key)
-  );
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden card-hover animate-fade-in">
@@ -159,7 +152,7 @@ export function SponsorWorkflowCard({
             <div className="w-8 h-8 rounded-lg bg-primary-100 flex items-center justify-center">
               <BuildingOfficeIcon className="w-5 h-5 text-primary-600" />
             </div>
-            <h3 className="font-semibold text-gray-900">{sponsor.company_name}</h3>
+            <h3 className="font-semibold text-gray-900">{sponsor.company_name || sponsor.name || 'Unnamed Company'}</h3>
           </div>
           <div className="flex items-center gap-2">
             {isPaused ? (

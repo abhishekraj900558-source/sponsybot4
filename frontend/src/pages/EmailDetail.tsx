@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useEmail, useUpdateEmail, useApproveEmail, useRejectEmail, useSendEmail, useRegenerateEmail } from '../hooks/useApi';
 import {
@@ -7,10 +7,8 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   PaperAirplaneIcon,
-  TrashIcon,
   ChevronLeftIcon,
   EyeIcon,
-  DocumentTextIcon,
 } from '@heroicons/react/24/outline';
 import { format } from 'date-fns/format';
 
@@ -30,19 +28,35 @@ export function EmailDetail() {
   const [isEditing, setIsEditing] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [editSubject, setEditSubject] = useState('');
+  const [editBody, setEditBody] = useState('');
 
   const { data: email, isLoading, refetch } = useEmail(emailId);
-    const updateMutation = useUpdateEmail();
+  const updateMutation = useUpdateEmail();
   const approveMutation = useApproveEmail();
   const rejectMutation = useRejectEmail();
   const sendMutation = useSendEmail();
   const regenerateMutation = useRegenerateEmail();
 
+  useEffect(() => {
+    if (email) {
+      setEditSubject((email as any).subject || '');
+      setEditBody((email as any).body || '');
+    }
+  }, [email]);
+
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    // For demo, we'll just update locally
-    setIsEditing(false);
-    refetch();
+    try {
+      await updateMutation.mutateAsync({
+        id: emailId,
+        data: { subject: editSubject, body: editBody },
+      });
+      setIsEditing(false);
+      refetch();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to update email');
+    }
   };
 
   const handleApprove = async () => {
@@ -162,7 +176,8 @@ export function EmailDetail() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Subject *</label>
                 <input
-                  defaultValue={(email as unknown as any).subject}
+                  value={editSubject}
+                  onChange={(e) => setEditSubject(e.target.value)}
                   className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   required
                 />
@@ -170,7 +185,8 @@ export function EmailDetail() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Body *</label>
                 <textarea
-                  defaultValue={(email as unknown as any).body}
+                  value={editBody}
+                  onChange={(e) => setEditBody(e.target.value)}
                   rows={15}
                   className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   required

@@ -1,19 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useSponsors, useCreateSponsor, useDuplicateCheck } from '../hooks/useApi';
-import { Link } from 'react-router-dom';
 import {
   PlusIcon,
   MagnifyingGlassIcon,
-  FunnelIcon,
   ArrowPathIcon,
   BuildingOfficeIcon,
-  EnvelopeOpenIcon,
-  CalendarDaysIcon,
-  ArrowRightOnRectangleIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
-import { formatNumber, formatDate } from '../utils/format';
 
 const statusColors = {
   'Not Contacted': 'bg-gray-100 text-gray-700',
@@ -27,21 +21,23 @@ const statusColors = {
 const statusOptions = ['All', 'Not Contacted', 'Contacted', 'Follow-up', 'Interested', 'Declined', 'Closed'];
 
 export function Sponsors() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'All');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newSponsor, setNewSponsor] = useState({
     company_name: '',
-    company_category: '',
+    company_category: 'Technology',
     industry: '',
     website: '',
     contact_person: '',
     contact_email: '',
     contact_role: '',
+    status: 'Not Contacted',
+    priority: 0,
     assignee_id: 1,
   });
-  const [isSearching, setIsSearching] = useState(false);
 
   // Sync search params with URL
   useEffect(() => {
@@ -51,42 +47,53 @@ export function Sponsors() {
     setSearchParams(params, { replace: true });
   }, [searchQuery, statusFilter, setSearchParams]);
 
-  const { data: sponsorsData, isLoading, refetch } = useSponsors({
+  const { data: sponsorsData, isLoading } = useSponsors({
     search: searchQuery.trim() || undefined,
     status: statusFilter === 'All' ? undefined : statusFilter,
   });
   const createSponsor = useCreateSponsor();
   const duplicateCheck = useDuplicateCheck();
 
-  // Show loading state when search params change
-  useEffect(() => {
-    if (searchQuery || statusFilter !== 'All') {
-      setIsSearching(true);
-      const timer = setTimeout(() => setIsSearching(false), 300);
-      return () => clearTimeout(timer);
-    }
-  }, [searchQuery, statusFilter]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const dup = (await duplicateCheck.mutateAsync(newSponsor)) as unknown as any;
-      if (dup.is_duplicate) {
-        if (!window.confirm(`${dup.conflict_type}: ${dup.details}\n\n${dup.suggested_action}\n\nContinue anyway?`)) {
+      const payload = {
+        ...newSponsor,
+        name: newSponsor.company_name,
+        category: newSponsor.company_category,
+      };
+
+      const dup = (await duplicateCheck.mutateAsync(payload)) as unknown as any;
+      if (dup?.is_duplicate || dup?.duplicate) {
+        const details = dup.details || `Company "${dup.company?.name || newSponsor.company_name}" already exists.`;
+        const action = dup.suggested_action || 'Do you want to continue creating this record anyway?';
+        if (!window.confirm(`${dup.conflict_type || 'Duplicate Detected'}: ${details}\n\n${action}\n\nContinue anyway?`)) {
           return;
         }
       }
-      await createSponsor.mutateAsync(newSponsor);
+      await createSponsor.mutateAsync(payload);
       setShowCreateModal(false);
-      setNewSponsor({ company_name: '', company_category: '', industry: '', website: '', contact_person: '', contact_email: '', contact_role: '', assignee_id: 1 });
+      const addedName = newSponsor.company_name;
+      setNewSponsor({
+        company_name: '',
+        company_category: 'Technology',
+        industry: '',
+        website: '',
+        contact_person: '',
+        contact_email: '',
+        contact_role: '',
+        status: 'Not Contacted',
+        priority: 0,
+        assignee_id: 1,
+      });
+      alert(`Sponsor "${addedName}" added successfully!`);
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to create sponsor');
+      alert(err.response?.data?.detail || err.response?.data?.error || 'Failed to create sponsor');
     }
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Trigger refetch by updating state
     setSearchQuery(searchQuery);
   };
 
@@ -95,8 +102,12 @@ export function Sponsors() {
     setStatusFilter('All');
   };
 
-  const sponsors = (sponsorsData as unknown as any)?.sponsors || [];
-  const total = (sponsorsData as unknown as any)?.total || 0;
+  const sponsors: any[] = Array.isArray(sponsorsData) 
+    ? sponsorsData 
+    : ((sponsorsData as unknown as any)?.sponsors || []);
+  const total = Array.isArray(sponsorsData) 
+    ? sponsorsData.length 
+    : ((sponsorsData as unknown as any)?.total ?? sponsors.length);
 
   return (
     <div className='space-y-6 animate-fade-in'>
@@ -189,15 +200,15 @@ export function Sponsors() {
                   key={sponsor.id} 
                   className='hover:bg-gray-50 cursor-pointer transition-colors animate-fade-in'
                   style={{ animationDelay: `${index * 0.03}s` }}
-                  onClick={() => window.location.href = '/sponsors/' + sponsor.id}
+                  onClick={() => navigate('/sponsors/' + sponsor.id)}
                 >
                   <td className='px-6 py-4'>
-                    <div className='font-medium text-gray-900'>{sponsor.company_name}</div>
+                    <div className='font-medium text-gray-900'>{sponsor.company_name || sponsor.name || 'N/A'}</div>
                     <div className='text-sm text-gray-500'>{sponsor.industry || 'N/A'}</div>
                   </td>
                   <td className='px-6 py-4'>
                     <span className='px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700'>
-                      {sponsor.company_category || 'N/A'}
+                      {sponsor.company_category || sponsor.category || 'N/A'}
                     </span>
                   </td>
                   <td className='px-6 py-4'>
@@ -208,19 +219,19 @@ export function Sponsors() {
                   </td>
                   <td className='px-6 py-4'>
                     <span className={'px-2 py-1 text-xs font-medium rounded-full ' + (statusColors[sponsor.status as keyof typeof statusColors] || 'bg-gray-100 text-gray-700')}> 
-                      {sponsor.status}
+                      {sponsor.status || 'Not Contacted'}
                     </span>
                   </td>
                   <td className='px-6 py-4'>
                     <div className='flex items-center gap-2'>
-                      <span className='text-lg font-bold text-gray-900'>{sponsor.priority_score}</span>
+                      <span className='text-lg font-bold text-gray-900'>{sponsor.priority_score ?? sponsor.priority ?? 0}</span>
                       <span className={'px-2 py-0.5 text-xs font-medium rounded-full ' + (sponsor.priority_tier === 'High' ? 'bg-green-100 text-green-800' : sponsor.priority_tier === 'Medium' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-700')}> 
                         {sponsor.priority_tier || 'N/A'}
                       </span>
                     </div>
                   </td>
                   <td className='px-6 py-4'>
-                    <span className='text-gray-600'>{sponsor.follow_up_count}/2</span>
+                    <span className='text-gray-600'>{sponsor.follow_up_count ?? 0}/2</span>
                   </td>
                   <td className='px-6 py-4 text-right'>
                     <div className='flex items-center justify-end gap-2'>
@@ -228,7 +239,7 @@ export function Sponsors() {
                         View
                       </Link>
                       <button
-                        onClick={(e) => { e.stopPropagation(); window.location.href = '/sponsors/' + sponsor.id + '/emails/draft'; }}
+                        onClick={(e) => { e.stopPropagation(); navigate('/sponsors/' + sponsor.id); }}
                         className='text-primary-600 hover:underline text-sm font-medium'
                       >
                         Email
@@ -299,11 +310,44 @@ export function Sponsors() {
                     onChange={(e) => setNewSponsor({...newSponsor, company_category: e.target.value})}
                     className='w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors bg-white'
                   >
-                    <option value=''>Select category</option>
-                    <option value='Platinum'>Platinum</option>
-                    <option value='Gold'>Gold</option>
-                    <option value='Silver'>Silver</option>
-                    <option value='Bronze'>Bronze</option>
+                    <option value='Technology'>Technology</option>
+                    <option value='Cloud Computing'>Cloud Computing</option>
+                    <option value='Tier 1 - Tech Giant'>Tier 1 - Tech Giant</option>
+                    <option value='Fintech'>Fintech</option>
+                    <option value='Developer Tools'>Developer Tools</option>
+                    <option value='Platinum'>Platinum Tier</option>
+                    <option value='Gold'>Gold Tier</option>
+                    <option value='Silver'>Silver Tier</option>
+                    <option value='Bronze'>Bronze Tier</option>
+                    <option value='General'>General</option>
+                  </select>
+                </div>
+                <div>
+                  <label className='block text-sm font-medium text-gray-700 mb-1'>Availability / Status</label>
+                  <select
+                    value={newSponsor.status}
+                    onChange={(e) => setNewSponsor({...newSponsor, status: e.target.value})}
+                    className='w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors bg-white'
+                  >
+                    <option value='Not Contacted'>Not Contacted (Available)</option>
+                    <option value='Contacted'>Contacted</option>
+                    <option value='Interested'>Interested / Active</option>
+                    <option value='Follow-up'>Follow-up Needed</option>
+                    <option value='Declined'>Declined / Unavailable</option>
+                    <option value='Closed'>Closed</option>
+                  </select>
+                </div>
+                <div>
+                  <label className='block text-sm font-medium text-gray-700 mb-1'>Priority</label>
+                  <select
+                    value={newSponsor.priority}
+                    onChange={(e) => setNewSponsor({...newSponsor, priority: Number(e.target.value)})}
+                    className='w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors bg-white'
+                  >
+                    <option value={0}>Standard (Priority 0)</option>
+                    <option value={1}>Medium (Priority 1)</option>
+                    <option value={2}>High (Priority 2)</option>
+                    <option value={3}>Critical / Tier 1 (Priority 3)</option>
                   </select>
                 </div>
                 <div>
@@ -313,9 +357,10 @@ export function Sponsors() {
                     value={newSponsor.industry}
                     onChange={(e) => setNewSponsor({...newSponsor, industry: e.target.value})}
                     className='w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors'
+                    placeholder='e.g. Artificial Intelligence, Cloud'
                   />
                 </div>
-                <div>
+                <div className='md:col-span-2'>
                   <label className='block text-sm font-medium text-gray-700 mb-1'>Website</label>
                   <input
                     type='url'
@@ -334,6 +379,7 @@ export function Sponsors() {
                     value={newSponsor.contact_person}
                     onChange={(e) => setNewSponsor({...newSponsor, contact_person: e.target.value})}
                     className='w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors'
+                    placeholder='e.g. Jane Doe'
                   />
                 </div>
                 <div>
@@ -343,6 +389,7 @@ export function Sponsors() {
                     value={newSponsor.contact_email}
                     onChange={(e) => setNewSponsor({...newSponsor, contact_email: e.target.value})}
                     className='w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors'
+                    placeholder='sponsor@example.com'
                   />
                 </div>
               </div>
@@ -353,6 +400,7 @@ export function Sponsors() {
                   value={newSponsor.contact_role}
                   onChange={(e) => setNewSponsor({...newSponsor, contact_role: e.target.value})}
                   className='w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors'
+                  placeholder='e.g. University Relations / Developer Advocacy'
                 />
               </div>
               <div className='flex justify-end gap-3 pt-4 border-t border-gray-200'>

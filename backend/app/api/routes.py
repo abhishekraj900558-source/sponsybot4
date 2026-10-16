@@ -33,7 +33,87 @@ from app.services.meeting import MeetingService, MeetingSlot
 from app.services.notification import NotificationService
 from app.services.dashboard import DashboardService
 
+from pydantic import BaseModel
+
 router = APIRouter()
+
+
+# ============================================================
+# REQUEST SCHEMAS (supporting JSON bodies from Frontend)
+# ============================================================
+
+class EmailDraftRequest(BaseModel):
+    email_type: Optional[str] = "initial"
+    event_id: Optional[int] = None
+    sender_id: Optional[int] = None
+
+
+class PrioritizeRequest(BaseModel):
+    event_id: Optional[int] = None
+
+
+class DuplicateCheckRequest(BaseModel):
+    company_name: str
+    contact_email: Optional[str] = None
+    contact_person: Optional[str] = None
+    website: Optional[str] = None
+    current_user_id: Optional[int] = None
+
+
+class DuplicateMergeRequest(BaseModel):
+    primary_sponsor_id: int
+    duplicate_sponsor_id: int
+    merged_by: int
+
+
+class NotificationReadRequest(BaseModel):
+    team_member_id: int
+
+
+class EmailTemplateCreateRequest(BaseModel):
+    name: str
+    email_type: str
+    subject_template: str
+    body_template: str
+    body_html_template: Optional[str] = None
+    variables: Optional[Dict[str, Any]] = None
+    description: Optional[str] = None
+    is_default: bool = False
+
+
+class EventCreateRequest(BaseModel):
+    name: str
+    start_date: datetime
+    end_date: datetime
+    description: Optional[str] = None
+    location: Optional[str] = None
+    expected_attendees: Optional[int] = None
+    budget_target: Optional[int] = None
+    sponsorship_tiers: Optional[Dict[str, Any]] = None
+
+
+class InstitutionalMemoryCreateRequest(BaseModel):
+    company_name: str
+    previous_sponsorships: Optional[List[Dict[str, Any]]] = None
+    total_contributed: int = 0
+    preferred_sponsorship_types: Optional[List[str]] = None
+    contact_history: Optional[List[Dict[str, Any]]] = None
+    preferences: Optional[str] = None
+    last_event: Optional[str] = None
+    last_contact_year: Optional[int] = None
+    outcome_notes: Optional[str] = None
+    source: str = "manual"
+    verified: bool = False
+
+
+class MeetingUpdateRequest(BaseModel):
+    scheduled_at: Optional[datetime] = None
+    duration_minutes: Optional[int] = None
+    location: Optional[str] = None
+    meeting_link: Optional[str] = None
+    status: Optional[MeetingStatus] = None
+    notes: Optional[str] = None
+    outcome: Optional[str] = None
 
 
 # ============================================================
@@ -303,10 +383,12 @@ async def research_sponsor(sponsor_id: int, db: Session = Depends(get_db)):
 @router.post("/sponsors/{sponsor_id}/prioritize")
 def prioritize_sponsor(
     sponsor_id: int,
+    request: Optional[PrioritizeRequest] = None,
     event_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
     """AI-powered sponsor prioritization and recommendation."""
+    effective_event_id = (request.event_id if request else None) or event_id
     
     sponsor = db.query(Sponsor).filter(Sponsor.id == sponsor_id).first()
     if not sponsor:
@@ -314,8 +396,8 @@ def prioritize_sponsor(
     
     # Get event context if provided
     event_context = None
-    if event_id:
-        event = db.query(Event).filter(Event.id == event_id).first()
+    if effective_event_id:
+        event = db.query(Event).filter(Event.id == effective_event_id).first()
         if event:
             event_context = {
                 "name": event.name,
@@ -372,16 +454,18 @@ def prioritize_sponsor(
 @router.post("/sponsors/{sponsor_id}/research-and-prioritize")
 async def research_and_prioritize_sponsor(
     sponsor_id: int,
+    request: Optional[PrioritizeRequest] = None,
     event_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
     """Research and prioritize a sponsor in one call."""
+    effective_event_id = (request.event_id if request else None) or event_id
     
     # First research
     research_result = await research_sponsor(sponsor_id, db)
     
     # Then prioritize
-    prioritize_result = prioritize_sponsor(sponsor_id, event_id, db)
+    prioritize_result = prioritize_sponsor(sponsor_id, request, effective_event_id, db)
     
     return {
         "research": research_result,
@@ -396,23 +480,33 @@ async def research_and_prioritize_sponsor(
 @router.post("/sponsors/{sponsor_id}/emails/draft", response_model=EmailLogResponse)
 def generate_email_draft(
     sponsor_id: int,
-    email_type: str = "initial",  # initial, follow_up_1, follow_up_2, meeting_request, thank_you, interested_response
+    request: Optional[EmailDraftRequest] = None,
+    email_type: Optional[str] = None,
     event_id: Optional[int] = None,
-    sender_id: int = None,
+    sender_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
     """Generate a personalized email draft for a sponsor."""
+    eff_email_type = (request.email_type if request and request.email_type else None) or email_type or "initial"
+    eff_event_id = (request.event_id if request else None) or event_id
+    eff_sender_id = (request.sender_id if request else None) or sender_id
     
     sponsor = db.query(Sponsor).filter(Sponsor.id == sponsor_id).first()
     if not sponsor:
         raise HTTPException(status_code=404, detail="Sponsor not found")
     
-    if not sender_id:
-        sender_id = sponsor.assignee_id
+    if not eff_sender_id:
+        eff_sender_id = sponsor.assignee_id
     
-    sender = db.query(TeamMember).filter(TeamMember.id == sender_id).first()
+    sender = db.query(TeamMember).filter(TeamMember.id == eff_sender_id).first() if eff_sender_id else None
+    if not sender:
+        sender = db.query(TeamMember).filter(TeamMember.is_active == True).first()
     if not sender:
         raise HTTPException(status_code=404, detail="Sender not found")
+    
+    sender_id = sender.id
+    email_type = eff_email_type
+    event_id = eff_event_id
     
     # Get event data
     event_data = {
@@ -504,6 +598,32 @@ def generate_email_draft(
     db.refresh(email_log)
     
     return email_log
+
+
+@router.post("/emails", response_model=EmailLogResponse, status_code=status.HTTP_201_CREATED)
+def create_email(email: EmailLogCreate, db: Session = Depends(get_db)):
+    """Manually create an email draft."""
+    sponsor = db.query(Sponsor).filter(Sponsor.id == email.sponsor_id).first()
+    if not sponsor:
+        raise HTTPException(status_code=404, detail="Sponsor not found")
+
+    sender_id = email.sender_id or sponsor.assignee_id
+    if not sender_id:
+        first_member = db.query(TeamMember).filter(TeamMember.is_active == True).first()
+        if first_member:
+            sender_id = first_member.id
+        else:
+            raise HTTPException(status_code=400, detail="No active sender found")
+
+    email_data = email.model_dump()
+    email_data["sender_id"] = sender_id
+    if "status" not in email_data or not email_data["status"]:
+        email_data["status"] = EmailStatus.DRAFT
+    db_email = EmailLog(**email_data)
+    db.add(db_email)
+    db.commit()
+    db.refresh(db_email)
+    return db_email
 
 
 @router.get("/sponsors/{sponsor_id}/emails", response_model=List[EmailLogResponse])
@@ -1269,6 +1389,7 @@ def get_meeting(meeting_id: int, db: Session = Depends(get_db)):
 @router.patch("/meetings/{meeting_id}", response_model=MeetingResponse)
 def update_meeting(
     meeting_id: int,
+    request: Optional[MeetingUpdateRequest] = None,
     scheduled_at: Optional[datetime] = None,
     duration_minutes: Optional[int] = None,
     location: Optional[str] = None,
@@ -1279,34 +1400,41 @@ def update_meeting(
     db: Session = Depends(get_db)
 ):
     """Update a meeting."""
+    eff_scheduled_at = (request.scheduled_at if request and request.scheduled_at is not None else None) or scheduled_at
+    eff_duration_minutes = (request.duration_minutes if request and request.duration_minutes is not None else None) or duration_minutes
+    eff_location = (request.location if request and request.location is not None else None) or location
+    eff_meeting_link = (request.meeting_link if request and request.meeting_link is not None else None) or meeting_link
+    eff_status = (request.status if request and request.status is not None else None) or status
+    eff_notes = (request.notes if request and request.notes is not None else None) or notes
+    eff_outcome = (request.outcome if request and request.outcome is not None else None) or outcome
     
     meeting_service = MeetingService(db)
     meeting = db.query(Meeting).filter(Meeting.id == meeting_id).first()
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
     
-    if status == MeetingStatus.SCHEDULED and scheduled_at:
+    if eff_status == MeetingStatus.SCHEDULED and eff_scheduled_at:
         return meeting_service.schedule_meeting(
-            meeting_id, scheduled_at, duration_minutes, location, meeting_link
+            meeting_id, eff_scheduled_at, eff_duration_minutes, eff_location, eff_meeting_link
         )
-    elif status == MeetingStatus.COMPLETED:
-        return meeting_service.complete_meeting(meeting_id, outcome, notes)
-    elif status == MeetingStatus.CANCELLED:
-        return meeting_service.cancel_meeting(meeting_id, notes)
+    elif eff_status == MeetingStatus.COMPLETED:
+        return meeting_service.complete_meeting(meeting_id, eff_outcome, eff_notes)
+    elif eff_status == MeetingStatus.CANCELLED:
+        return meeting_service.cancel_meeting(meeting_id, eff_notes)
     else:
         # General update
-        if scheduled_at:
-            meeting.scheduled_at = scheduled_at
-        if duration_minutes:
-            meeting.duration_minutes = duration_minutes
-        if location:
-            meeting.location = location
-        if meeting_link:
-            meeting.meeting_link = meeting_link
-        if notes:
-            meeting.notes = notes
-        if status:
-            meeting.status = status
+        if eff_scheduled_at:
+            meeting.scheduled_at = eff_scheduled_at
+        if eff_duration_minutes:
+            meeting.duration_minutes = eff_duration_minutes
+        if eff_location:
+            meeting.location = eff_location
+        if eff_meeting_link:
+            meeting.meeting_link = eff_meeting_link
+        if eff_notes:
+            meeting.notes = eff_notes
+        if eff_status:
+            meeting.status = eff_status
         
         db.commit()
         db.refresh(meeting)
@@ -1357,11 +1485,19 @@ def get_unread_count(team_member_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/notifications/{notification_id}/read")
-def mark_notification_read(notification_id: int, team_member_id: int, db: Session = Depends(get_db)):
+def mark_notification_read(
+    notification_id: int,
+    request: Optional[NotificationReadRequest] = None,
+    team_member_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
     """Mark a notification as read."""
+    target_member_id = (request.team_member_id if request else None) or team_member_id
+    if not target_member_id:
+        raise HTTPException(status_code=400, detail="team_member_id is required")
     
     notification_service = NotificationService(db)
-    success = notification_service.mark_as_read(notification_id, team_member_id)
+    success = notification_service.mark_as_read(notification_id, target_member_id)
     
     if not success:
         raise HTTPException(status_code=404, detail="Notification not found")
@@ -1370,11 +1506,18 @@ def mark_notification_read(notification_id: int, team_member_id: int, db: Sessio
 
 
 @router.post("/notifications/read-all")
-def mark_all_notifications_read(team_member_id: int, db: Session = Depends(get_db)):
+def mark_all_notifications_read(
+    request: Optional[NotificationReadRequest] = None,
+    team_member_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
     """Mark all notifications as read."""
+    target_member_id = (request.team_member_id if request else None) or team_member_id
+    if not target_member_id:
+        raise HTTPException(status_code=400, detail="team_member_id is required")
     
     notification_service = NotificationService(db)
-    count = notification_service.mark_all_as_read(team_member_id)
+    count = notification_service.mark_all_as_read(target_member_id)
     
     return {"message": f"Marked {count} notifications as read"}
 
@@ -1460,29 +1603,35 @@ def list_email_templates(email_type: Optional[str] = None, db: Session = Depends
 
 @router.post("/email-templates", response_model=EmailTemplateResponse, status_code=status.HTTP_201_CREATED)
 def create_email_template(
-    name: str,
-    email_type: str,
-    subject_template: str,
-    body_template: str,
-    body_html_template: str = None,
-    variables: Dict = None,
-    description: str = None,
+    template_data: Optional[EmailTemplateCreateRequest] = None,
+    name: Optional[str] = None,
+    email_type: Optional[str] = None,
+    subject_template: Optional[str] = None,
+    body_template: Optional[str] = None,
+    body_html_template: Optional[str] = None,
+    variables: Optional[Dict] = None,
+    description: Optional[str] = None,
     is_default: bool = False,
     db: Session = Depends(get_db)
 ):
     """Create an email template."""
+    if template_data:
+        data = template_data.model_dump()
+    else:
+        if not name or not email_type or not subject_template or not body_template:
+            raise HTTPException(status_code=400, detail="Missing required template fields")
+        data = {
+            "name": name,
+            "email_type": email_type,
+            "subject_template": subject_template,
+            "body_template": body_template,
+            "body_html_template": body_html_template,
+            "variables": variables,
+            "description": description,
+            "is_default": is_default
+        }
     
-    template = EmailTemplate(
-        name=name,
-        email_type=email_type,
-        subject_template=subject_template,
-        body_template=body_template,
-        body_html_template=body_html_template,
-        variables=variables,
-        description=description,
-        is_default=is_default
-    )
-    
+    template = EmailTemplate(**data)
     db.add(template)
     db.commit()
     db.refresh(template)
@@ -1496,7 +1645,6 @@ def create_email_template(
 @router.get("/events", response_model=List[EventResponse])
 def list_events(active_only: bool = True, db: Session = Depends(get_db)):
     """List events."""
-    
     query = db.query(Event)
     if active_only:
         query = query.filter(Event.is_active == True)
@@ -1506,29 +1654,35 @@ def list_events(active_only: bool = True, db: Session = Depends(get_db)):
 
 @router.post("/events", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
 def create_event(
-    name: str,
-    start_date: datetime,
-    end_date: datetime,
-    description: str = None,
-    location: str = None,
-    expected_attendees: int = None,
-    budget_target: int = None,
-    sponsorship_tiers: Dict = None,
+    event_data: Optional[EventCreateRequest] = None,
+    name: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    description: Optional[str] = None,
+    location: Optional[str] = None,
+    expected_attendees: Optional[int] = None,
+    budget_target: Optional[int] = None,
+    sponsorship_tiers: Optional[Dict] = None,
     db: Session = Depends(get_db)
 ):
     """Create an event."""
+    if event_data:
+        data = event_data.model_dump()
+    else:
+        if not name or not start_date or not end_date:
+            raise HTTPException(status_code=400, detail="Missing required event fields: name, start_date, end_date")
+        data = {
+            "name": name,
+            "start_date": start_date,
+            "end_date": end_date,
+            "description": description,
+            "location": location,
+            "expected_attendees": expected_attendees,
+            "budget_target": budget_target,
+            "sponsorship_tiers": sponsorship_tiers
+        }
     
-    event = Event(
-        name=name,
-        start_date=start_date,
-        end_date=end_date,
-        description=description,
-        location=location,
-        expected_attendees=expected_attendees,
-        budget_target=budget_target,
-        sponsorship_tiers=sponsorship_tiers
-    )
-    
+    event = Event(**data)
     db.add(event)
     db.commit()
     db.refresh(event)
@@ -1542,72 +1696,60 @@ def create_event(
 @router.get("/institutional-memory", response_model=List[InstitutionalMemoryResponse])
 def list_institutional_memory(db: Session = Depends(get_db)):
     """List institutional memory records."""
-    
     return db.query(InstitutionalMemory).order_by(InstitutionalMemory.company_name).all()
 
 
 @router.post("/institutional-memory", response_model=InstitutionalMemoryResponse, status_code=status.HTTP_201_CREATED)
 def create_institutional_memory(
-    company_name: str,
-    previous_sponsorships: List[Dict] = None,
+    memory_data: Optional[InstitutionalMemoryCreateRequest] = None,
+    company_name: Optional[str] = None,
+    previous_sponsorships: Optional[List[Dict]] = None,
     total_contributed: int = 0,
-    preferred_sponsorship_types: List[str] = None,
-    contact_history: List[Dict] = None,
-    preferences: str = None,
-    last_event: str = None,
-    last_contact_year: int = None,
-    outcome_notes: str = None,
+    preferred_sponsorship_types: Optional[List[str]] = None,
+    contact_history: Optional[List[Dict]] = None,
+    preferences: Optional[str] = None,
+    last_event: Optional[str] = None,
+    last_contact_year: Optional[int] = None,
+    outcome_notes: Optional[str] = None,
     source: str = "manual",
     verified: bool = False,
     db: Session = Depends(get_db)
 ):
     """Create or update institutional memory for a company."""
+    if memory_data:
+        company = memory_data.company_name
+        data = memory_data.model_dump()
+    else:
+        if not company_name:
+            raise HTTPException(status_code=400, detail="company_name is required")
+        company = company_name
+        data = {
+            "company_name": company_name,
+            "previous_sponsorships": previous_sponsorships,
+            "total_contributed": total_contributed,
+            "preferred_sponsorship_types": preferred_sponsorship_types,
+            "contact_history": contact_history,
+            "preferences": preferences,
+            "last_event": last_event,
+            "last_contact_year": last_contact_year,
+            "outcome_notes": outcome_notes,
+            "source": source,
+            "verified": verified
+        }
     
     existing = db.query(InstitutionalMemory).filter(
-        InstitutionalMemory.company_name.ilike(company_name)
+        InstitutionalMemory.company_name.ilike(company)
     ).first()
     
     if existing:
-        # Update
-        if previous_sponsorships:
-            existing.previous_sponsorships = previous_sponsorships
-        if total_contributed:
-            existing.total_contributed = total_contributed
-        if preferred_sponsorship_types:
-            existing.preferred_sponsorship_types = preferred_sponsorship_types
-        if contact_history:
-            existing.contact_history = contact_history
-        if preferences:
-            existing.preferences = preferences
-        if last_event:
-            existing.last_event = last_event
-        if last_contact_year:
-            existing.last_contact_year = last_contact_year
-        if outcome_notes:
-            existing.outcome_notes = outcome_notes
-        if source:
-            existing.source = source
-        if verified:
-            existing.verified = verified
-        
+        for k, v in data.items():
+            if v is not None:
+                setattr(existing, k, v)
         db.commit()
         db.refresh(existing)
         return existing
     
-    memory = InstitutionalMemory(
-        company_name=company_name,
-        previous_sponsorships=previous_sponsorships,
-        total_contributed=total_contributed,
-        preferred_sponsorship_types=preferred_sponsorship_types,
-        contact_history=contact_history,
-        preferences=preferences,
-        last_event=last_event,
-        last_contact_year=last_contact_year,
-        outcome_notes=outcome_notes,
-        source=source,
-        verified=verified
-    )
-    
+    memory = InstitutionalMemory(**data)
     db.add(memory)
     db.commit()
     db.refresh(memory)
@@ -1620,17 +1762,25 @@ def create_institutional_memory(
 
 @router.post("/duplicates/check")
 def check_duplicates(
-    company_name: str,
-    contact_email: str = None,
-    contact_person: str = None,
-    website: str = None,
-    current_user_id: int = None,
+    request: Optional[DuplicateCheckRequest] = None,
+    company_name: Optional[str] = None,
+    contact_email: Optional[str] = None,
+    contact_person: Optional[str] = None,
+    website: Optional[str] = None,
+    current_user_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
     """Check for potential duplicate sponsors."""
-    
     service = DuplicatePreventionService(db)
-    result = service.check_before_outreach(company_name, contact_email, contact_person, website, current_user_id)
+    c_name = (request.company_name if request else None) or company_name
+    if not c_name:
+        raise HTTPException(status_code=400, detail="company_name is required")
+    c_email = (request.contact_email if request else None) or contact_email
+    c_person = (request.contact_person if request else None) or contact_person
+    c_web = (request.website if request else None) or website
+    u_id = (request.current_user_id if request else None) or current_user_id
+    
+    result = service.check_before_outreach(c_name, c_email, c_person, c_web, u_id)
     
     return {
         "is_duplicate": result.is_duplicate,
@@ -1643,16 +1793,23 @@ def check_duplicates(
 
 @router.post("/duplicates/merge")
 def merge_sponsors(
-    primary_sponsor_id: int,
-    duplicate_sponsor_id: int,
-    merged_by: int,
+    request: Optional[DuplicateMergeRequest] = None,
+    primary_sponsor_id: Optional[int] = None,
+    duplicate_sponsor_id: Optional[int] = None,
+    merged_by: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
     """Merge duplicate sponsor records."""
+    p_id = (request.primary_sponsor_id if request else None) or primary_sponsor_id
+    d_id = (request.duplicate_sponsor_id if request else None) or duplicate_sponsor_id
+    m_by = (request.merged_by if request else None) or merged_by
+    
+    if not p_id or not d_id or not m_by:
+        raise HTTPException(status_code=400, detail="primary_sponsor_id, duplicate_sponsor_id, and merged_by are required")
     
     service = DuplicatePreventionService(db)
     try:
-        merged = service.merge_sponsors(primary_sponsor_id, duplicate_sponsor_id, merged_by)
+        merged = service.merge_sponsors(p_id, d_id, m_by)
         return {"message": "Sponsors merged successfully", "merged_sponsor_id": merged.id}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

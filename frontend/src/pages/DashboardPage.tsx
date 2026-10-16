@@ -5,23 +5,20 @@ import {
   BuildingOfficeIcon,
   EnvelopeOpenIcon,
   CalendarDaysIcon,
-  CurrencyDollarIcon,
   ArrowTrendingUpIcon,
   UsersIcon,
   ArrowRightOnRectangleIcon,
   ArrowPathIcon,
-  EnvelopeIcon,
   CheckCircleIcon,
   XCircleIcon,
   ClockIcon,
   PlusIcon,
 } from '@heroicons/react/24/outline';
-import { formatNumber } from '../utils/format';
 
 const statCards = [
   {
     name: 'Total Sponsors',
-    value: (stats: any) => stats.total_sponsors,
+    value: (stats: any) => stats?.total_sponsors ?? 0,
     icon: BuildingOfficeIcon,
     color: 'bg-blue-500',
     bgColor: 'bg-blue-50',
@@ -30,7 +27,7 @@ const statCards = [
   },
   {
     name: 'Contacted',
-    value: (stats: any) => stats.by_status?.Contacted || 0,
+    value: (stats: any) => stats?.by_status?.Contacted ?? 0,
     icon: EnvelopeOpenIcon,
     color: 'bg-blue-500',
     bgColor: 'bg-blue-50',
@@ -39,7 +36,7 @@ const statCards = [
   },
   {
     name: 'Interested',
-    value: (stats: any) => stats.by_status?.Interested || 0,
+    value: (stats: any) => stats?.by_status?.Interested ?? 0,
     icon: CheckCircleIcon,
     color: 'bg-green-500',
     bgColor: 'bg-green-50',
@@ -48,7 +45,7 @@ const statCards = [
   },
   {
     name: 'Declined',
-    value: (stats: any) => stats.by_status?.Declined || 0,
+    value: (stats: any) => stats?.by_status?.Declined ?? 0,
     icon: XCircleIcon,
     color: 'bg-red-500',
     bgColor: 'bg-red-50',
@@ -57,7 +54,7 @@ const statCards = [
   },
   {
     name: 'Response Rate',
-    value: (stats: any) => `${stats.response_rate?.toFixed(1) || 0}%`,
+    value: (stats: any) => `${stats?.response_rate?.toFixed(1) ?? 0}%`,
     icon: ArrowTrendingUpIcon,
     color: 'bg-purple-500',
     bgColor: 'bg-purple-50',
@@ -66,7 +63,7 @@ const statCards = [
   },
   {
     name: 'Meetings',
-    value: (stats: any) => stats.meetings_scheduled || 0,
+    value: (stats: any) => stats?.meetings_scheduled ?? 0,
     icon: CalendarDaysIcon,
     color: 'bg-orange-500',
     bgColor: 'bg-orange-50',
@@ -127,7 +124,7 @@ export function DashboardPage() {
                 </div>
               </div>
               <div className="mt-4">
-                <p className="text-2xl font-bold text-gray-900">{stat.value?.(stats) || '0'}</p>
+                <p className="text-2xl font-bold text-gray-900">{stat?.value?.(stats) ?? '0'}</p>
                 <p className="text-sm text-gray-500 mt-1">{stat.name}</p>
               </div>
             </div>
@@ -146,7 +143,12 @@ export function DashboardPage() {
           <div className="space-y-3">
             {pipelineStages.map((stage, index) => {
               const count = (pipeline as unknown as Record<string, any[]>)?.[stage.key]?.length || 0;
-              const total = Object.values(pipeline as unknown as Record<string, any[]>).reduce((sum: number, arr: any[]) => sum + arr.length, 0) || 1;
+             const total = Object.values(
+  (pipeline ?? {}) as Record<string, any[]>
+).reduce(
+  (sum: number, arr: any) => sum + (Array.isArray(arr) ? arr.length : 0),
+  0
+) || 1;
               const percentage = (count / total) * 100;
               return (
                 <div key={stage.key} className="animate-fade-in" style={{ animationDelay: `${index * 0.05}s` }}>
@@ -191,24 +193,26 @@ export function DashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {(teamPerformance as unknown as any[])?.map((member: any, index: number) => (
-                  <tr key={member.team_member_id} className="hover:bg-gray-50 animate-fade-in" style={{ animationDelay: `${index * 0.05}s` }}>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={`https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=0ea5e9&color=fff`}
-                          alt={member.name}
-                          className="w-8 h-8 rounded-full"
-                        />
-                        <span className="font-medium text-gray-900">{member.name}</span>
-                      </div>
-                    </td>
-                    <td className="text-right px-4 py-3 text-gray-600">{member.assigned_sponsors}</td>
-                    <td className="text-right px-4 py-3 text-gray-600">{member.emails_sent}</td>
-                    <td className="text-right px-4 py-3 text-green-600 font-medium">{member.interested_sponsors}</td>
-                    <td className="text-right px-4 py-3 text-green-600 font-medium">{member.sponsorships_won}</td>
-                  </tr>
-                )) || (
+                {Array.isArray(teamPerformance) && teamPerformance.length > 0 ? (
+                  teamPerformance.map((member: any, index: number) => (
+                    <tr key={member.team_member_id} className="hover:bg-gray-50 animate-fade-in" style={{ animationDelay: `${index * 0.05}s` }}>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={`https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=0ea5e9&color=fff`}
+                            alt={member.name}
+                            className="w-8 h-8 rounded-full"
+                          />
+                          <span className="font-medium text-gray-900">{member.name}</span>
+                        </div>
+                      </td>
+                      <td className="text-right px-4 py-3 text-gray-600">{member.assigned_sponsors}</td>
+                      <td className="text-right px-4 py-3 text-gray-600">{member.emails_sent}</td>
+                      <td className="text-right px-4 py-3 text-green-600 font-medium">{member.interested_sponsors}</td>
+                      <td className="text-right px-4 py-3 text-green-600 font-medium">{member.sponsorships_won}</td>
+                    </tr>
+                  ))
+                ) : (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-gray-500 animate-fade-in">
                       <UsersIcon className="w-12 h-12 mx-auto text-gray-300 mb-2" />
@@ -230,17 +234,19 @@ export function DashboardPage() {
           <Link to="/sponsors" className="text-sm text-primary-600 hover:underline font-medium">View all</Link>
         </div>
         <div className="space-y-3">
-          {(stats as unknown as any)?.recent_activity?.slice(0, 5).map((activity: any, index: number) => (
-            <div key={index} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors animate-fade-in" style={{ animationDelay: `${index * 0.05}s` }}>
-              <div className="p-2 bg-primary-100 rounded-full">
-                <ArrowPathIcon className="w-5 h-5 text-primary-600" />
+          {(stats as unknown as any)?.recent_activity && (stats as unknown as any).recent_activity.length > 0 ? (
+            (stats as unknown as any).recent_activity.slice(0, 5).map((activity: any, index: number) => (
+              <div key={index} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors animate-fade-in" style={{ animationDelay: `${index * 0.05}s` }}>
+                <div className="p-2 bg-primary-100 rounded-full">
+                  <ArrowPathIcon className="w-5 h-5 text-primary-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{activity.action}</p>
+                  <p className="text-xs text-gray-500 truncate">{activity.target} • {new Date(activity.timestamp).toLocaleString()}</p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">{activity.action}</p>
-                <p className="text-xs text-gray-500 truncate">{activity.target} • {new Date(activity.timestamp).toLocaleString()}</p>
-              </div>
-            </div>
-          )) || (
+            ))
+          ) : (
             <div className="text-center py-8 animate-fade-in">
               <ArrowPathIcon className="w-12 h-12 mx-auto text-gray-300 mb-2" />
               <p className="text-lg font-medium text-gray-500">No recent activity</p>

@@ -1,5 +1,5 @@
 import React, { useState, createContext, useContext, ReactNode, useCallback } from 'react';
-import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   HomeIcon,
@@ -11,7 +11,6 @@ import {
   MagnifyingGlassIcon,
   BellIcon,
   UserCircleIcon,
-  ArrowLeftIcon,
   CpuChipIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
@@ -92,7 +91,6 @@ export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
-  const location = useLocation();
   const navigate = useNavigate();
 
   const handleSearch = (e: React.FormEvent) => {
@@ -174,8 +172,8 @@ export function Layout() {
           <div className="p-4 border-t border-gray-200">
             <button
               onClick={() => {
-                localStorage.removeItem('user');
-                window.location.href = '/login';
+                logout();
+                navigate('/login');
               }}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900"
             >
@@ -246,11 +244,11 @@ export function Layout() {
 
                 <div className="hidden sm:flex items-center gap-2">
                   <img
-                    src="https://ui-avatars.com/api/?name=John+Doe&background=0ea5e9&color=fff"
-                    alt="John Doe"
+                    src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=0ea5e9&color=fff`}
+                    alt={user?.name || 'User'}
                     className="w-8 h-8 rounded-full"
                   />
-                  <span className="text-sm font-medium text-gray-700">John Doe</span>
+                  <span className="text-sm font-medium text-gray-700">{user?.name || 'User'}</span>
                 </div>
 
                 <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center lg:hidden">

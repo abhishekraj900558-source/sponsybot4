@@ -41,6 +41,24 @@ export interface AgentStatusResponse {
   paused_sponsors?: number[];
 }
 
+export function useGeminiEmailDraft() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      companyId: number;
+      eventName: string;
+      audience: string;
+      sponsorshipNeeded?: string[];
+      organizerName?: string;
+    }) => api.sponsorApi.createGeminiEmailDraft(data as any),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['sponsorEmails', variables.companyId] });
+      queryClient.invalidateQueries({ queryKey: ['emails'] });
+      queryClient.invalidateQueries({ queryKey: ['sponsors'] });
+    },
+  });
+}
+
 // Query keys
 export const queryKeys = {
   sponsors: ['sponsors'] as const,

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { useSponsor, useSponsorEmails, useSponsorReplies, useSponsorFollowUps, useSponsorFollowUpStatus, useSponsorResearch, useSponsorPrioritize, useSponsorResearchAndPrioritize, useEmailDraft } from '../hooks/useApi';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import api from '../api/client';
+import { useSponsor, useSponsorEmails, useSponsorReplies, useSponsorFollowUps, useSponsorFollowUpStatus, useSponsorResearch, useSponsorPrioritize, useSponsorResearchAndPrioritize, useGeminiEmailDraft } from '../hooks/useApi';
 import { useMeetings } from '../hooks/useApi';
 import {
   BuildingOfficeIcon,
@@ -9,15 +10,8 @@ import {
   ClockIcon,
   ArrowPathIcon,
   ArrowTrendingUpIcon,
-  CheckCircleIcon,
-  XCircleIcon,
-  ExclamationCircleIcon,
   InformationCircleIcon,
-  PencilIcon,
-  TrashIcon,
   PlusIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
   ChevronLeftIcon,
   CalendarDaysIcon,
   XMarkIcon,
@@ -25,7 +19,6 @@ import {
   SparklesIcon,
 } from '@heroicons/react/24/outline';
 import { format } from 'date-fns/format';
-
 const statusColors = {
   'Not Contacted': 'bg-gray-100 text-gray-700',
   Contacted: 'bg-blue-100 text-blue-800',
@@ -53,7 +46,6 @@ const tabs = [
 export function SponsorDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const sponsorId = parseInt(id || '0', 10);
   const [activeTab, setActiveTab] = useState('overview');
   const [showResearchModal, setShowResearchModal] = useState(false);
@@ -73,14 +65,14 @@ export function SponsorDetail() {
   const researchMutation = useSponsorResearch(sponsorId);
   const prioritizeMutation = useSponsorPrioritize(sponsorId);
   const researchAndPrioritizeMutation = useSponsorResearchAndPrioritize(sponsorId);
-  const createEmailMutation = useEmailDraft();
-
+  const geminiEmailMutation = useGeminiEmailDraft();
+  
   // Track loading state
   useEffect(() => {
-    if (!isLoading && sponsor) {
+    if (!isLoading) {
       setIsLoadingData(false);
     }
-  }, [isLoading, sponsor]);
+  }, [isLoading]);
 
   const handleResearchAction = async (type: 'research' | 'prioritize' | 'both') => {
     try {
@@ -102,19 +94,48 @@ export function SponsorDetail() {
 
   const handleCreateEmail = async () => {
     try {
-      await createEmailMutation.mutateAsync({
-        sponsorId,
-        data: { email_type: emailType, event_id: eventId ? parseInt(eventId, 10) : undefined },
+      const result = await geminiEmailMutation.mutateAsync({
+        companyId: Number(sponsorId),
+        eventName: 'AI/ML Hackathon',
+        audience: 'College students',
+        sponsorshipNeeded: [
+          'Financial support',
+          'Technical resources',
+        ],
+        organizerName: 'Organizing Team',
       });
+
+      const draft = (result as any)?.data || result;
+
       setShowCreateEmailModal(false);
       setEmailType('initial');
       setEventId('');
+
+      alert(`Email draft saved! ID: ${draft?.id || 'Created'}`);
       refetch();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to create email draft');
+      alert(
+        err.response?.data?.error ||
+        err.response?.data?.detail ||
+        'Failed to generate and save email draft'
+      );
     }
   };
 
+  const [isSchedulingFollowUp, setIsSchedulingFollowUp] = useState(false);
+
+  const handleScheduleFollowUp = async () => {
+    try {
+      setIsSchedulingFollowUp(true);
+      await api.post(`/sponsors/${sponsorId}/follow-ups/schedule`);
+      refetch();
+      alert('Follow-up scheduled successfully! You can review and approve it.');
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to schedule follow-up');
+    } finally {
+      setIsSchedulingFollowUp(false);
+    }
+  };
   if (isLoadingData) {
     return (
       <div className="flex flex-col items-center justify-center h-64 animate-fade-in">
@@ -149,21 +170,21 @@ export function SponsorDetail() {
             <ChevronLeftIcon className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{sponsorData.company_name}</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{sponsorData.company_name || sponsorData.name || 'Unnamed Company'}</h1>
             <div className="flex items-center gap-2 mt-1 text-sm text-gray-600">
               <span>{sponsorData.industry || 'No industry'}</span>
               <span className="text-gray-300">•</span>
               <span className="px-2 py-0.5 bg-primary-100 text-primary-700 rounded-full text-xs font-medium">
-                {sponsorData.company_category || 'Uncategorized'}
+                {sponsorData.company_category || sponsorData.category || 'Uncategorized'}
               </span>
             </div>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Link to={`/sponsors/${sponsorId}/emails/draft`} className="btn-primary group">
+          <button onClick={() => setShowCreateEmailModal(true)} className="btn-primary group">
             <PlusIcon className="w-5 h-5 mr-2 group-hover:rotate-90 transition-transform duration-200" />
             New Email
-          </Link>
+          </button>
           <button onClick={() => setShowResearchModal(true)} className="btn-secondary group">
             <MagnifyingGlassIcon className="w-5 h-5 mr-2 group-hover:rotate-12 transition-transform duration-200" />
             Research
@@ -174,14 +195,14 @@ export function SponsorDetail() {
       {/* Status & Priority Badges */}
       <div className="flex flex-wrap gap-3 animate-fade-in stagger-1">
         <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusColors[sponsorData.status as keyof typeof statusColors] || 'bg-gray-100 text-gray-700'} animate-pulse-soft`}>
-          {sponsorData.status}
+          {sponsorData.status || 'Not Contacted'}
         </span>
         <span className={`px-3 py-1 rounded-full text-sm font-medium ${priorityColors[sponsorData.priority_tier as keyof typeof priorityColors] || 'bg-gray-100 text-gray-700'}`}>
           <SparklesIcon className="w-4 h-4 inline mr-1" />
-          Priority: {sponsorData.priority_score} ({sponsorData.priority_tier})
+          Priority: {sponsorData.priority_score ?? sponsorData.priority ?? 0} {sponsorData.priority_tier ? `(${sponsorData.priority_tier})` : ''}
         </span>
         <span className="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-700">
-          Follow-ups: {sponsorData.follow_up_count}/2
+          Follow-ups: {sponsorData.follow_up_count ?? 0}/2
         </span>
         {sponsorData.assigned_to && (
           <span className="px-3 py-1 rounded-full text-sm font-medium bg-primary-100 text-primary-800">
@@ -272,19 +293,19 @@ export function SponsorDetail() {
             {/* Company Details */}
             <DetailCard title="Company Details" icon={InformationCircleIcon} iconColor="gray">
               <dl className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <DetailRow label="Company Name" value={sponsorData.company_name} />
-                <DetailRow label="Category" value={sponsorData.company_category} />
+                <DetailRow label="Company Name" value={sponsorData.company_name || sponsorData.name || 'N/A'} />
+                <DetailRow label="Category" value={sponsorData.company_category || sponsorData.category || 'N/A'} />
                 <DetailRow label="Industry" value={sponsorData.industry || 'N/A'} />
                 <DetailRow 
                   label="Status" 
                   value={
                     <span className={`px-2 py-1 rounded-full text-xs ${statusColors[sponsorData.status as keyof typeof statusColors] || 'bg-gray-100 text-gray-700'}`}>
-                      {sponsorData.status}
+                      {sponsorData.status || 'Not Contacted'}
                     </span>
                   } 
                 />
-                <DetailRow label="Priority Score" value={`${sponsorData.priority_score} (${sponsorData.priority_tier})`} />
-                <DetailRow label="Follow-up Count" value={`${sponsorData.follow_up_count}/2`} />
+                <DetailRow label="Priority Score" value={`${sponsorData.priority_score ?? sponsorData.priority ?? 0} ${sponsorData.priority_tier ? `(${sponsorData.priority_tier})` : ''}`} />
+                <DetailRow label="Follow-up Count" value={`${sponsorData.follow_up_count ?? 0}/2`} />
                 <DetailRow label="Created" value={sponsorData.created_at ? format(new Date(sponsorData.created_at), 'MMM d, yyyy') : 'N/A'} />
                 <DetailRow label="Last Updated" value={sponsorData.updated_at ? format(new Date(sponsorData.updated_at), 'MMM d, yyyy') : 'N/A'} />
               </dl>
@@ -307,11 +328,18 @@ export function SponsorDetail() {
         )}
 
         {activeTab === 'emails' && (
-          <EmailsTab sponsorId={sponsorId} emails={emails} format={format} />
+          <EmailsTab sponsorId={sponsorId} emails={emails} format={format} onCreateDraft={() => setShowCreateEmailModal(true)} />
         )}
 
         {activeTab === 'followups' && (
-          <FollowUpsTab followUpStatus={followUpStatus} followUps={followUps} format={format} />
+          <FollowUpsTab
+            sponsorId={sponsorId}
+            followUpStatus={followUpStatus}
+            followUps={followUps}
+            format={format}
+            onScheduleFollowUp={handleScheduleFollowUp}
+            isSchedulingFollowUp={isSchedulingFollowUp}
+          />
         )}
 
         {activeTab === 'meetings' && (
@@ -408,10 +436,10 @@ export function SponsorDetail() {
               </button>
               <button
                 onClick={handleCreateEmail}
-                disabled={createEmailMutation.isPending}
+                disabled={geminiEmailMutation.isPending}
                 className="btn-primary"
               >
-                {createEmailMutation.isPending ? 'Creating...' : 'Create Draft'}
+                {geminiEmailMutation.isPending ? 'Creating...' : 'Create Draft'}
               </button>
             </div>
           </div>
@@ -544,15 +572,15 @@ function ResearchTab({ sponsor, showModal, setResearchType, researchMutation, pr
   );
 }
 
-function EmailsTab({ sponsorId, emails, format }: any) {
+function EmailsTab({ emails, format, onCreateDraft }: any) {
   return (
     <div className="p-6 animate-fade-in">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold text-gray-900">Email History</h2>
-        <Link to={`/sponsors/${sponsorId}/emails/draft`} className="btn-primary group">
+        <button onClick={onCreateDraft} className="btn-primary group">
           <PlusIcon className="w-5 h-5 mr-2 group-hover:rotate-90 transition-transform duration-200" />
           Create Draft
-        </Link>
+        </button>
       </div>
 
       {(emails as unknown as any[]) && (emails as unknown as any[]).length > 0 ? (
@@ -595,22 +623,38 @@ function EmailsTab({ sponsorId, emails, format }: any) {
   );
 }
 
-function FollowUpsTab({ followUpStatus, followUps, format }: any) {
+function FollowUpsTab({ sponsorId, followUpStatus, followUps, format, onScheduleFollowUp, isSchedulingFollowUp }: any) {
+  const followUpsSent = followUpStatus?.follow_ups_sent || 0;
+  const isMaxReached = followUpsSent >= 2;
+
   return (
     <div className="p-6 animate-fade-in">
-      <h2 className="text-lg font-semibold text-gray-900 mb-6">Follow-up Sequence</h2>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Follow-up Sequence</h2>
+          <p className="text-sm text-gray-500">Automated sequence: max 2 follow-ups per sponsor</p>
+        </div>
+        <button
+          onClick={onScheduleFollowUp}
+          disabled={isSchedulingFollowUp || isMaxReached}
+          className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50"
+        >
+          <SparklesIcon className="w-4 h-4" />
+          {isSchedulingFollowUp ? 'Scheduling...' : isMaxReached ? 'Max Follow-ups (2/2) Reached' : '✨ Schedule Next Follow-up'}
+        </button>
+      </div>
 
       <div className="mb-6 p-4 bg-gray-50 rounded-lg">
         <h3 className="font-semibold text-gray-900 mb-2">Follow-up Status</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
           <StatCard label="Emails Sent" value={followUpStatus?.emails_sent || 0} icon={EnvelopeOpenIcon} color="blue" />
           <StatCard label="Replies Received" value={followUpStatus?.replies_received || 0} icon={ArrowPathIcon} color="green" />
-          <StatCard label="Follow-ups Sent" value={`${followUpStatus?.follow_ups_sent || 0}/2`} icon={ClockIcon} color="purple" />
+          <StatCard label="Follow-ups Sent" value={`${followUpsSent}/2`} icon={ClockIcon} color="purple" />
         </div>
         <div className="mt-4">
-          <p className="text-gray-500">Next Follow-up Due</p>
+          <p className="text-gray-500 text-sm">Next Follow-up Due</p>
           <p className="font-bold text-lg text-gray-900">
-            {followUpStatus?.next_follow_up_due ? format(new Date(followUpStatus.next_follow_up_due), 'MMM d, yyyy HH:mm') : 'Not scheduled'}
+            {followUpStatus?.next_follow_up_due ? format(new Date(followUpStatus.next_follow_up_due), 'MMM d, yyyy HH:mm') : (isMaxReached ? 'Completed (2/2 sent)' : 'Not scheduled')}
           </p>
         </div>
       </div>
@@ -618,29 +662,39 @@ function FollowUpsTab({ followUpStatus, followUps, format }: any) {
       <div className="space-y-3">
         {(followUps as unknown as any[]) && (followUps as unknown as any[]).length > 0 ? (
           (followUps as unknown as any[]).map((fu: any, index: number) => (
-            <div key={fu.id} className="p-4 border border-gray-200 rounded-lg animate-fade-in" style={{ animationDelay: `${index * 0.03}s` }}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-gray-900">Follow-up #{fu.sequence_number}</p>
-                  <p className="text-sm text-gray-500">{fu.email_type} • {fu.scheduled_at ? format(new Date(fu.scheduled_at), 'MMM d, yyyy HH:mm') : 'Not scheduled'}</p>
+            <Link key={fu.id} to={`/emails/${fu.id}`} className="block hover:shadow-sm transition-shadow">
+              <div className="p-4 border border-gray-200 rounded-lg animate-fade-in hover:bg-gray-50 transition-colors" style={{ animationDelay: `${index * 0.03}s` }}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-gray-900">Follow-up #{fu.sequence_number}</p>
+                      <span className="text-xs text-gray-500 font-normal">({fu.subject || 'Follow-up Draft'})</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">{fu.email_type} • {fu.scheduled_at ? format(new Date(fu.scheduled_at), 'MMM d, yyyy HH:mm') : 'Draft'}</p>
+                  </div>
+                  <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
+                    fu.status === 'Draft' ? 'bg-gray-100 text-gray-700' :
+                    fu.status === 'Pending' || fu.status === 'Pending Approval' ? 'bg-yellow-100 text-yellow-800' :
+                    fu.status === 'Approved' ? 'bg-green-100 text-green-800' :
+                    fu.status === 'Sent' ? 'bg-blue-100 text-blue-800' :
+                    fu.status === 'Cancelled' ? 'bg-red-100 text-red-800' :
+                    'bg-gray-100 text-gray-700'
+                  }`}>
+                    {fu.status}
+                  </span>
                 </div>
-                <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                  fu.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
-                  fu.status === 'Sent' ? 'bg-blue-100 text-blue-800' :
-                  fu.status === 'Approved' ? 'bg-green-100 text-green-800' :
-                  fu.status === 'Cancelled' ? 'bg-red-100 text-red-800' :
-                  'bg-gray-100 text-gray-700'
-                }`}>
-                  {fu.status}
-                </span>
+                {fu.body_preview && (
+                  <p className="mt-2 text-sm text-gray-600 line-clamp-2">{fu.body_preview}...</p>
+                )}
               </div>
-              {fu.status === 'Pending' && fu.body_preview && (
-                <p className="mt-2 text-sm text-gray-600 line-clamp-2">{fu.body_preview}</p>
-              )}
-            </div>
+            </Link>
           ))
         ) : (
-          <p className="text-center text-gray-500 py-8">No follow-ups scheduled yet</p>
+          <div className="text-center py-8 text-gray-500">
+            <ClockIcon className="w-10 h-10 mx-auto text-gray-300 mb-2" />
+            <p className="font-medium">No follow-ups scheduled yet</p>
+            <p className="text-sm mt-1">Click "Schedule Next Follow-up" to let Gemini create the next follow-up draft.</p>
+          </div>
         )}
       </div>
     </div>

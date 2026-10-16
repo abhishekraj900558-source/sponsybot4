@@ -45,6 +45,9 @@ export function Login() {
           </div>
           <h1 className="text-3xl font-bold text-gray-900">Welcome to SponsyBot</h1>
           <p className="mt-2 text-gray-600">Sign in to manage sponsorships</p>
+          <div className="mt-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+            Local Development Mode (Node.js Backend)
+          </div>
         </div>
 
         {/* Features highlights */}

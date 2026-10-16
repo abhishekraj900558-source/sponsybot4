@@ -1,24 +1,16 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useMeetings, useCreateMeeting, useScheduleMeeting, useCompleteMeeting, useCancelMeeting, useMeetingCalendarLinks } from '../hooks/useApi';
+import { useMeetings, useCreateMeeting, useScheduleMeeting, useCompleteMeeting, useCancelMeeting } from '../hooks/useApi';
 import {
   PlusIcon,
   MagnifyingGlassIcon,
-  FunnelIcon,
   ArrowPathIcon,
   CalendarDaysIcon,
   ClockIcon,
   MapPinIcon,
   LinkIcon,
-  CheckCircleIcon,
-  XCircleIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 import { format } from 'date-fns/format';
-import { addDays } from 'date-fns/addDays';
-import { startOfWeek } from 'date-fns/startOfWeek';
-import { endOfWeek } from 'date-fns/endOfWeek';
 
 const statusColors = {
   'Meeting Scheduled': 'bg-blue-100 text-blue-800',
@@ -410,7 +402,7 @@ export function Meetings() {
             <div className="p-6 space-y-4">
               <div className="space-y-3">
                 <a
-                  href={`/api/meetings/${selectedMeetingId}/calendar-links?provider=google`}
+                  href={`${process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000'}/meetings/${selectedMeetingId}/calendar-links?provider=google`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
@@ -428,7 +420,7 @@ export function Meetings() {
                   </div>
                 </a>
                 <a
-                  href={`/api/meetings/${selectedMeetingId}/calendar-links?provider=outlook`}
+                  href={`${process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000'}/meetings/${selectedMeetingId}/calendar-links?provider=outlook`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
@@ -446,7 +438,7 @@ export function Meetings() {
                   </div>
                 </a>
                 <a
-                  href={`/api/meetings/${selectedMeetingId}/calendar-links?provider=ics`}
+                  href={`${process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000'}/meetings/${selectedMeetingId}/calendar-links?provider=ics`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"

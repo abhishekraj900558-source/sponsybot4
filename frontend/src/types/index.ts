@@ -47,10 +47,13 @@ export type EmailStatusType =
 export interface Sponsor {
   id: number;
   company_name: string;
+  name?: string;
   company_category?: string;
+  category?: string;
   industry?: string;
   website?: string;
   size?: string;
+  priority?: number;
   contact_person?: string;
   contact_email?: string;
   contact_role?: string;

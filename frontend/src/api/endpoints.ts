@@ -26,6 +26,13 @@ export const sponsorApi = {
     event_id?: number;
     sender_id?: number;
   }) => api.post(`/sponsors/${sponsorId}/emails/draft`, data),
+  createGeminiEmailDraft: (data: {
+    companyId: number;
+    eventName: string;
+    audience: string;
+    sponsorshipNeeded: string[];
+    organizerName: string;
+  }) => api.post('/email-draft', data),
 
   checkDuplicates: (data: {
     company_name: string;
@@ -33,7 +40,7 @@ export const sponsorApi = {
     contact_person?: string;
     website?: string;
     current_user_id?: number;
-  }) => api.post('/duplicates/check', data),
+  }) => api.post('/duplicates/check', { name: data.company_name, ...data }),
 
   merge: (primaryId: number, duplicateId: number, mergedBy: number) =>
     api.post('/duplicates/merge', { primary_sponsor_id: primaryId, duplicate_sponsor_id: duplicateId, merged_by: mergedBy }),

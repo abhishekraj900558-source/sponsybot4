@@ -233,7 +233,120 @@ Best,
     db.commit()
 
 
-def run_follow_up_scheduler():
+def create_default_team_members(db):
+    """Create default team members if they don't exist."""
+    from app.models import TeamMember
+
+    members = [
+        {"name": "John Doe", "email": "john@club.org", "role": "Sponsorship Lead", "is_active": True},
+        {"name": "Jane Smith", "email": "jane@club.org", "role": "Team Member", "is_active": True},
+    ]
+    for m in members:
+        existing = db.query(TeamMember).filter(TeamMember.email == m["email"]).first()
+        if not existing:
+            member = TeamMember(**m)
+            db.add(member)
+    db.commit()
+
+
+def create_default_events(db):
+    """Create default event if none exist."""
+    from app.models import Event
+    from datetime import datetime, timedelta
+
+    existing = db.query(Event).first()
+    if not existing:
+        event = Event(
+            name="HackTech 2026",
+            description="Premier Student Hackathon with 500+ attendees focusing on AI and Cloud innovations.",
+            start_date=datetime.utcnow() + timedelta(days=30),
+            end_date=datetime.utcnow() + timedelta(days=32),
+            location="University Main Auditorium",
+            expected_attendees=500,
+            budget_target=2500000,
+            sponsorship_tiers={
+                "Platinum": {"amount": 10000, "benefits": ["Keynote speech", "Booth at entrance", "Resume book", "Branding on t-shirts"]},
+                "Gold": {"amount": 5000, "benefits": ["Workshop slot", "Booth", "Branding on website"]},
+                "Silver": {"amount": 2500, "benefits": ["Mentorship table", "Branding on banners"]}
+            },
+            is_active=True
+        )
+        db.add(event)
+        db.commit()
+
+
+def create_default_sponsors(db):
+    """Create sample sponsors if none exist."""
+    from app.models import Sponsor, SponsorStatus, TeamMember
+
+    count = db.query(Sponsor).count()
+    if count == 0:
+        john = db.query(TeamMember).filter(TeamMember.email == "john@club.org").first()
+        jane = db.query(TeamMember).filter(TeamMember.email == "jane@club.org").first()
+        john_id = john.id if john else None
+        jane_id = jane.id if jane else None
+
+        sample_sponsors = [
+            {
+                "company_name": "Google",
+                "company_category": "Tier 1 - Tech Giant",
+                "industry": "Technology / Cloud",
+                "website": "https://google.com",
+                "contact_person": "Sundar Pichai",
+                "contact_email": "partnerships@google.com",
+                "contact_role": "Director of University Relations",
+                "status": SponsorStatus.NOT_CONTACTED,
+                "assignee_id": john_id,
+            },
+            {
+                "company_name": "Microsoft",
+                "company_category": "Tier 1 - Tech Giant",
+                "industry": "Cloud / Software",
+                "website": "https://microsoft.com",
+                "contact_person": "Satya Nadella",
+                "contact_email": "sponsorships@microsoft.com",
+                "contact_role": "Community Partnerships Lead",
+                "status": SponsorStatus.NOT_CONTACTED,
+                "assignee_id": john_id,
+            },
+            {
+                "company_name": "AWS",
+                "company_category": "Cloud Infrastructure",
+                "industry": "Cloud Infrastructure",
+                "website": "https://aws.amazon.com",
+                "contact_person": "Andy Jassy",
+                "contact_email": "community@amazon.com",
+                "contact_role": "Developer Advocacy Lead",
+                "status": SponsorStatus.NOT_CONTACTED,
+                "assignee_id": jane_id,
+            },
+            {
+                "company_name": "Stripe",
+                "company_category": "Fintech",
+                "industry": "Fintech / Payments",
+                "website": "https://stripe.com",
+                "contact_person": "Patrick Collison",
+                "contact_email": "devrel@stripe.com",
+                "contact_role": "Head of DevRel",
+                "status": SponsorStatus.NOT_CONTACTED,
+                "assignee_id": jane_id,
+            },
+            {
+                "company_name": "GitHub",
+                "company_category": "Developer Tools",
+                "industry": "Developer Tools",
+                "website": "https://github.com",
+                "contact_person": "Thomas Dohmke",
+                "contact_email": "education@github.com",
+                "contact_role": "GitHub Education Program Lead",
+                "status": SponsorStatus.NOT_CONTACTED,
+                "assignee_id": john_id,
+            },
+        ]
+        for s in sample_sponsors:
+            db.add(Sponsor(**s))
+        db.commit()
+
     """Background job to check and schedule follow-ups."""
     from app.database import SessionLocal
     from app.services.follow_up import FollowUpService
@@ -368,10 +481,13 @@ async def lifespan(app: FastAPI):
     # Startup
     init_db()
 
-    # Create default email templates
+    # Create default email templates, team members, events, and sample sponsors
     db = next(get_db())
     try:
         create_default_templates(db)
+        create_default_team_members(db)
+        create_default_events(db)
+        create_default_sponsors(db)
     finally:
         db.close()
 
@@ -403,7 +519,15 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url, "http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        settings.frontend_url,
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
