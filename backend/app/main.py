@@ -491,7 +491,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="SponsyBot API",
+    title="Sponsoris API",
     description="Sponsorship Outreach Automation for Student Clubs",
     version="1.0.0",
     lifespan=lifespan
@@ -521,7 +521,7 @@ app.include_router(api_router, prefix="/api")
 @app.get("/")
 def root():
     return {
-        "name": "SponsyBot API",
+        "name": "Sponsoris API",
         "version": "1.0.0",
         "description": "Sponsorship Outreach Automation",
         "docs": "/docs",

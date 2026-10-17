@@ -43,7 +43,7 @@ export function Login() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14m14 0H7m0 0l-5 5m0 0l5 5m-5-5h14" />
             </svg>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">Welcome to SponsyBot</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Welcome to Sponsoris</h1>
           <p className="mt-2 text-gray-600">Sign in to manage sponsorships</p>
           <div className="mt-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
             Local Development Mode (Node.js Backend)
