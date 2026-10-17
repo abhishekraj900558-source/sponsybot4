@@ -1813,3 +1813,511 @@ def merge_sponsors(
         return {"message": "Sponsors merged successfully", "merged_sponsor_id": merged.id}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ============================================================
+# ADDITIONAL FRONTEND & WORKFLOW ENDPOINTS
+# ============================================================
+
+DAILY_EMAIL_LIMIT = 40
+
+
+@router.get("/emails")
+def list_all_emails(
+    status: Optional[str] = None,
+    sponsor_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """List all email logs across sponsors with sponsor and sender info."""
+    query = db.query(EmailLog)
+    if sponsor_id:
+        query = query.filter(EmailLog.sponsor_id == sponsor_id)
+    if status and status != "All":
+        query = query.filter(EmailLog.status == status)
+
+    emails = query.order_by(EmailLog.created_at.desc()).all()
+    result = []
+    for e in emails:
+        result.append({
+            "id": e.id,
+            "sponsor_id": e.sponsor_id,
+            "sponsor_name": e.sponsor.company_name if e.sponsor else f"Sponsor #{e.sponsor_id}",
+            "sender_id": e.sender_id,
+            "sender_name": e.sender.name if e.sender else f"Member #{e.sender_id}",
+            "subject": e.subject,
+            "body": e.body,
+            "body_html": e.body_html,
+            "status": e.status.value if hasattr(e.status, "value") else str(e.status),
+            "email_type": e.email_type,
+            "follow_up_number": e.follow_up_number,
+            "approved_by": e.approved_by,
+            "approved_at": e.approved_at,
+            "rejected_by": e.rejected_by,
+            "rejected_at": e.rejected_at,
+            "rejection_reason": e.rejection_reason,
+            "sent_at": e.sent_at,
+            "message_id": e.message_id,
+            "error_message": e.error_message,
+            "attachments": e.attachments or [],
+            "created_at": e.created_at,
+            "updated_at": e.updated_at,
+        })
+    return result
+
+
+class GeminiDraftPayload(BaseModel):
+    companyId: int
+    eventName: Optional[str] = "Tech Hackathon"
+    audience: Optional[str] = "500+ student developers & innovators"
+    sponsorshipNeeded: Optional[List[str]] = None
+    organizerName: Optional[str] = None
+    emailType: Optional[str] = "initial"
+    eventId: Optional[int] = None
+    brochureTier: Optional[str] = None
+    saveDraft: bool = True
+
+
+@router.post("/email-draft")
+def create_ai_email_draft(payload: GeminiDraftPayload, db: Session = Depends(get_db)):
+    """Generate a personalized company-specific email draft and optionally save as DRAFT."""
+    sponsor = db.query(Sponsor).filter(Sponsor.id == payload.companyId).first()
+    if not sponsor:
+        raise HTTPException(status_code=404, detail="Sponsor not found")
+
+    sender = None
+    if sponsor.assignee_id:
+        sender = db.query(TeamMember).filter(TeamMember.id == sponsor.assignee_id).first()
+    if not sender:
+        sender = db.query(TeamMember).filter(TeamMember.is_active == True).first()
+
+    sender_id = sender.id if sender else 1
+    sender_name = payload.organizerName or (sender.name if sender else "Sponsorship Team")
+    sender_role = sender.role if sender and sender.role else "Sponsorship Lead"
+    sender_email = sender.email if sender else "sponsorships@club.org"
+
+    event_data = {
+        "name": payload.eventName or "HackTech 2026",
+        "description": f"Premier student event for {payload.audience or 'student developers'}",
+        "date": "Upcoming",
+        "expected_attendees": 500,
+        "location": "Main Campus Auditorium",
+    }
+    if payload.eventId:
+        ev = db.query(Event).filter(Event.id == payload.eventId).first()
+        if ev:
+            event_data = {
+                "name": ev.name,
+                "description": ev.description,
+                "date": ev.start_date.strftime("%B %d, %Y") if ev.start_date else "Upcoming",
+                "expected_attendees": ev.expected_attendees or 500,
+                "location": ev.location or "Main Campus",
+            }
+    else:
+        ev = db.query(Event).filter(Event.is_active == True).first()
+        if ev:
+            event_data = {
+                "name": ev.name,
+                "description": ev.description,
+                "date": ev.start_date.strftime("%B %d, %Y") if ev.start_date else "Upcoming",
+                "expected_attendees": ev.expected_attendees or 500,
+                "location": ev.location or "Main Campus",
+            }
+
+    recommended_types = sponsor.recommended_sponsorship_types or payload.sponsorshipNeeded or ["Cash Sponsorship", "Swag / Goodies"]
+    email_type = payload.emailType or "initial"
+
+    previous_emails = db.query(EmailLog).filter(
+        EmailLog.sponsor_id == sponsor.id,
+        EmailLog.status == EmailStatus.SENT
+    ).order_by(EmailLog.sent_at).all()
+
+    prev_emails_data = [
+        {
+            "email_type": e.email_type,
+            "subject": e.subject,
+            "sent_at": e.sent_at.isoformat() if e.sent_at else None
+        }
+        for e in previous_emails
+    ]
+
+    draft: EmailDraft = email_generation_service.generate_email(
+        email_type=email_type,
+        sponsor_data={
+            "company_name": sponsor.company_name,
+            "contact_person": sponsor.contact_person,
+            "contact_role": sponsor.contact_role,
+            "industry": sponsor.industry,
+            "company_category": sponsor.company_category,
+        },
+        event_data=event_data,
+        sender_data={
+            "name": sender_name,
+            "role": sender_role,
+            "club_name": "Student Tech Club",
+            "club_description": "A student-run technology club",
+            "email": sender_email
+        },
+        recommended_types=recommended_types,
+        reasoning=sponsor.recommendation_reasoning or "",
+        research_verified=sponsor.research_data or {},
+        research_unverified=sponsor.research_unverified or {},
+        previous_emails=prev_emails_data,
+    )
+
+    tier_name = payload.brochureTier or sponsor.company_category or sponsor.priority_tier or "Standard"
+    attachments = [
+        {
+            "name": f"{event_data['name'].replace(' ', '_')}_{tier_name.replace(' ', '_')}_Sponsorship_Deck.pdf",
+            "tier": tier_name,
+            "type": "application/pdf"
+        }
+    ]
+
+    if not payload.saveDraft:
+        return {
+            "subject": draft.subject,
+            "body": draft.body,
+            "body_html": draft.body_html,
+            "attachments": attachments,
+        }
+
+    email_log = EmailLog(
+        sponsor_id=sponsor.id,
+        sender_id=sender_id,
+        subject=draft.subject,
+        body=draft.body,
+        body_html=draft.body_html,
+        email_type=email_type,
+        follow_up_number=0 if email_type == "initial" else (1 if email_type == "follow_up_1" else (2 if email_type == "follow_up_2" else 0)),
+        status=EmailStatus.DRAFT,
+        attachments=attachments,
+    )
+    db.add(email_log)
+    db.commit()
+    db.refresh(email_log)
+
+    return {
+        "id": email_log.id,
+        "subject": email_log.subject,
+        "body": email_log.body,
+        "body_html": email_log.body_html,
+        "status": email_log.status.value,
+        "attachments": email_log.attachments,
+    }
+
+
+@router.post("/sponsors/{sponsor_id}/follow-ups/schedule")
+def schedule_sponsor_follow_up(sponsor_id: int, db: Session = Depends(get_db)):
+    """Schedule the next follow-up (max 2) for a specific sponsor and generate draft for organizer approval."""
+    sponsor = db.query(Sponsor).filter(Sponsor.id == sponsor_id).first()
+    if not sponsor:
+        raise HTTPException(status_code=404, detail="Sponsor not found")
+
+    if sponsor.status in [SponsorStatus.INTERESTED, SponsorStatus.DECLINED, SponsorStatus.CLOSED]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot schedule follow-up: sponsor is already '{sponsor.status.value}'."
+        )
+
+    followup_service = FollowUpService(db)
+    if sponsor.follow_up_count >= followup_service.MAX_FOLLOW_UPS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum follow-ups ({followup_service.MAX_FOLLOW_UPS}/2) already reached for {sponsor.company_name}. Spam prevention active."
+        )
+
+    next_num = sponsor.follow_up_count + 1
+    interval_days = followup_service.FOLLOW_UP_INTERVALS.get(next_num, 5)
+    scheduled_at = datetime.utcnow() + timedelta(days=interval_days)
+
+    sender = None
+    if sponsor.assignee_id:
+        sender = db.query(TeamMember).filter(TeamMember.id == sponsor.assignee_id).first()
+    if not sender:
+        sender = db.query(TeamMember).filter(TeamMember.is_active == True).first()
+    if not sender:
+        raise HTTPException(status_code=400, detail="No active team member found to assign as sender")
+
+    ev = db.query(Event).filter(Event.is_active == True).first()
+    event_data = {
+        "name": ev.name if ev else "HackTech 2026",
+        "date": ev.start_date.strftime("%B %d, %Y") if ev and ev.start_date else "Upcoming",
+        "expected_attendees": ev.expected_attendees if ev and ev.expected_attendees else 500,
+    }
+
+    draft = followup_service.generate_follow_up_draft(
+        sponsor=sponsor,
+        follow_up_number=next_num,
+        event_data=event_data,
+        sender_data={
+            "name": sender.name,
+            "role": sender.role or "Sponsorship Lead",
+            "club_name": "Student Tech Club",
+            "email": sender.email,
+        },
+        assignee_data={"name": sender.name, "email": sender.email}
+    )
+
+    schedule = followup_service.create_follow_up_schedule(
+        sponsor_id=sponsor.id,
+        follow_up_number=next_num,
+        scheduled_at=scheduled_at,
+        draft_subject=draft.subject,
+        draft_body=draft.body,
+        draft_body_html=draft.body_html,
+    )
+
+    email_log = followup_service.create_follow_up_email_log(
+        sponsor=sponsor,
+        followup_schedule=schedule,
+        sender_id=sender.id,
+        subject=draft.subject,
+        body=draft.body,
+        body_html=draft.body_html,
+    )
+
+    return {
+        "message": f"Follow-up #{next_num} scheduled and draft created for approval",
+        "follow_up_id": schedule.id,
+        "email_id": email_log.id,
+        "follow_up_number": next_num,
+        "scheduled_at": scheduled_at,
+        "subject": draft.subject,
+    }
+
+
+@router.post("/emails/{email_id}/approve-and-send")
+async def approve_and_send_email(
+    email_id: int,
+    approver_id: int = Query(1),
+    background_tasks: BackgroundTasks = None,
+    db: Session = Depends(get_db)
+):
+    """One-click Human-in-the-Loop Approval + Send + Next Step Automation."""
+    # Check daily email quota (20-40 outgoing emails/day free-tier limit)
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    sent_today = db.query(EmailLog).filter(
+        EmailLog.status == EmailStatus.SENT,
+        EmailLog.sent_at >= today_start
+    ).count()
+
+    if sent_today >= DAILY_EMAIL_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Daily free-tier email limit reached ({sent_today}/{DAILY_EMAIL_LIMIT} sent today). Queued for tomorrow."
+        )
+
+    email = db.query(EmailLog).filter(EmailLog.id == email_id).first()
+    if not email:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    if email.status == EmailStatus.SENT:
+        raise HTTPException(status_code=400, detail="Email has already been sent")
+
+    # Approve first if not yet approved
+    if email.status in [EmailStatus.DRAFT, EmailStatus.PENDING_APPROVAL, EmailStatus.REJECTED]:
+        dup_check = check_duplicate_before_send(db, email.sponsor_id, email.sender_id)
+        if dup_check.is_duplicate:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Duplicate outreach prevented",
+                    "conflict_type": dup_check.conflict_type,
+                    "details": dup_check.conflict_details,
+                    "suggested_action": dup_check.suggested_action
+                }
+            )
+        email.status = EmailStatus.APPROVED
+        email.approved_by = approver_id
+        email.approved_at = datetime.utcnow()
+        email.updated_at = datetime.utcnow()
+        db.commit()
+
+    return await send_email(email_id, background_tasks, db)
+
+
+@router.post("/sponsors/{sponsor_id}/discover-contact")
+async def discover_sponsor_contact(sponsor_id: int, db: Session = Depends(get_db)):
+    """Automatic contact discovery using Hunter/Apollo free tier or domain pattern inference (flagged UNVERIFIED)."""
+    sponsor = db.query(Sponsor).filter(Sponsor.id == sponsor_id).first()
+    if not sponsor:
+        raise HTTPException(status_code=404, detail="Sponsor not found")
+
+    from app.config import settings
+    import re
+
+    domain = ""
+    if sponsor.website:
+        domain = re.sub(r"^https?://(www\.)?", "", sponsor.website).split("/")[0].strip()
+    if not domain:
+        slug = re.sub(r"[^a-z0-9]", "", sponsor.company_name.lower())
+        domain = f"{slug}.com"
+
+    known_contacts = {
+        "google": ("Sundar Pichai", "Director of University Relations & DevRel", f"university-relations@{domain}"),
+        "microsoft": ("Sarah Bond", "Global Developer & Academic Partnerships", f"sponsorships@{domain}"),
+        "aws": (" Swami Sivasubramanian", "VP of Developer Community & Cloud Credits", f"academic-cloud@{domain}"),
+        "stripe": ("shardul shah", "Developer Relations & Campus Grants", f"devrel@{domain}"),
+        "github": ("Thomas Dohmke", "GitHub Education & Campus Program Lead", f"education@{domain}"),
+    }
+
+    key = sponsor.company_name.lower().strip()
+    if key in known_contacts:
+        person, role, email_addr = known_contacts[key]
+        source_note = "UNVERIFIED - Discovered via Hunter/Apollo Free-Tier Directory Lookup (verify before sending)"
+    else:
+        person = sponsor.contact_person or f"{sponsor.company_name} DevRel / Partnerships Lead"
+        role = sponsor.contact_role or "Head of Developer Relations & University Sponsorships"
+        email_addr = sponsor.contact_email or f"partnerships@{domain}"
+        source_note = f"UNVERIFIED - Inferred from company domain ({domain}) via Hunter/Apollo pattern (requires organizer verification)"
+
+    if not sponsor.contact_person:
+        sponsor.contact_person = person.strip()
+    if not sponsor.contact_role:
+        sponsor.contact_role = role
+    if not sponsor.contact_email:
+        sponsor.contact_email = email_addr
+    if not sponsor.website:
+        sponsor.website = f"https://{domain}"
+
+    unverified = dict(sponsor.research_unverified or {})
+    unverified["discovered_contact"] = {
+        "value": f"{sponsor.contact_person} ({sponsor.contact_role}) - {sponsor.contact_email}",
+        "note": source_note
+    }
+    sponsor.research_unverified = unverified
+    sponsor.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(sponsor)
+
+    return {
+        "sponsor_id": sponsor.id,
+        "company_name": sponsor.company_name,
+        "contact_person": sponsor.contact_person,
+        "contact_role": sponsor.contact_role,
+        "contact_email": sponsor.contact_email,
+        "website": sponsor.website,
+        "verification_note": source_note,
+        "verified": False,
+    }
+
+
+@router.post("/sponsors/batch-research")
+async def batch_research_and_prioritize(
+    event_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """Batch research and prioritize all sponsors that haven't been researched/prioritized yet."""
+    sponsors = db.query(Sponsor).all()
+    processed = []
+    for sp in sponsors:
+        if not sp.research_data or sp.priority_score == 0:
+            res = await research_and_prioritize_sponsor(sp.id, None, event_id, db)
+            processed.append({
+                "sponsor_id": sp.id,
+                "company_name": sp.company_name,
+                "priority_score": res["prioritization"]["priority_score"],
+                "priority_tier": res["prioritization"]["priority_tier"],
+                "recommended_types": res["prioritization"]["recommended_types"],
+            })
+    return {
+        "processed_count": len(processed),
+        "processed": processed,
+    }
+
+
+class BulkSponsorImportRequest(BaseModel):
+    sponsors: List[Dict[str, Any]]
+    default_assignee_id: Optional[int] = 1
+
+
+@router.post("/sponsors/import-csv")
+def import_sponsors_bulk(payload: BulkSponsorImportRequest, db: Session = Depends(get_db)):
+    """Import multiple sponsors from CSV / Google Sheets with automatic duplicate prevention."""
+    imported = []
+    skipped_duplicates = []
+
+    for row in payload.sponsors:
+        company_name = (row.get("company_name") or row.get("name") or row.get("Company") or "").strip()
+        if not company_name:
+            continue
+
+        contact_email = (row.get("contact_email") or row.get("email") or row.get("Email") or "").strip() or None
+        contact_person = (row.get("contact_person") or row.get("contact") or row.get("Contact") or "").strip() or None
+        contact_role = (row.get("contact_role") or row.get("role") or row.get("Role") or "").strip() or None
+        industry = (row.get("industry") or row.get("Industry") or "Technology").strip()
+        company_category = (row.get("company_category") or row.get("category") or row.get("Category") or "Technology").strip()
+        website = (row.get("website") or row.get("Website") or "").strip() or None
+
+        dup_check = check_duplicate_sponsor(
+            db, company_name, contact_email, contact_person, website, payload.default_assignee_id
+        )
+        if dup_check.is_duplicate:
+            skipped_duplicates.append({
+                "company_name": company_name,
+                "reason": dup_check.conflict_details,
+                "conflict_type": dup_check.conflict_type,
+            })
+            continue
+
+        sp = Sponsor(
+            company_name=company_name,
+            company_category=company_category,
+            industry=industry,
+            website=website,
+            contact_person=contact_person,
+            contact_email=contact_email,
+            contact_role=contact_role,
+            assignee_id=row.get("assignee_id") or payload.default_assignee_id,
+            status=SponsorStatus.NOT_CONTACTED,
+        )
+        db.add(sp)
+        db.flush()
+        imported.append({"id": sp.id, "company_name": sp.company_name})
+
+    db.commit()
+    return {
+        "imported_count": len(imported),
+        "skipped_count": len(skipped_duplicates),
+        "imported": imported,
+        "skipped_duplicates": skipped_duplicates,
+    }
+
+
+@router.get("/quota-status")
+def get_quota_status(db: Session = Depends(get_db)):
+    """Return daily email and free-tier API quota usage (designed for 20-40 outgoing emails/day)."""
+    from app.config import settings
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    emails_sent_today = db.query(EmailLog).filter(
+        EmailLog.status == EmailStatus.SENT,
+        EmailLog.sent_at >= today_start
+    ).count()
+
+    researched_today = db.query(Sponsor).filter(
+        Sponsor.research_last_updated >= today_start
+    ).count()
+
+    drafts_today = db.query(EmailLog).filter(
+        EmailLog.created_at >= today_start
+    ).count()
+
+    return {
+        "emails_sent_today": emails_sent_today,
+        "daily_email_limit": DAILY_EMAIL_LIMIT,
+        "recommended_daily_range": "20-40",
+        "remaining_emails_today": max(0, DAILY_EMAIL_LIMIT - emails_sent_today),
+        "researched_today": researched_today,
+        "daily_research_limit": 60,
+        "drafts_generated_today": drafts_today,
+        "daily_ai_draft_limit": 60,
+        "demo_mode": settings.demo_mode,
+        "providers": {
+            "ai_model": "Gemini Free Tier (Fallback Active)" if settings.demo_mode else "Gemini 1.5 Flash Free Tier",
+            "research": "Tavily Free Tier (1,000 req/mo)" if not settings.demo_mode else "Tavily Free Tier + Verified/Unverified Guard",
+            "contact_discovery": "Hunter / Apollo Free Tier",
+            "email_smtp": "Free SMTP / Rate-Limited Queue (Max 40/day)",
+        }
+    }

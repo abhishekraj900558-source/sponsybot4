@@ -10,16 +10,11 @@ import threading
 from app.config import settings
 from app.database import init_db, get_db
 from app.api.routes import router as api_router
-from app.agent.sponsor_agent import SponsyBotAgent, run_agent_cli
 
 logger = logging.getLogger(__name__)
 
 # Global scheduler instance
 scheduler = AsyncIOScheduler()
-
-# Global agent instance
-agent_instance: SponsyBotAgent = None
-agent_thread: threading.Thread = None
 
 
 def create_default_templates(db):
@@ -155,7 +150,7 @@ Best,
         {
             "name": "Thank You - Default",
             "email_type": "thank_you",
-            "subject_template": "Thank you for sponsoring {event_name}! \ud83c\udf89",
+            "subject_template": "Thank you for sponsoring {event_name}! ",
             "body_template": """Hi {contact_person},
 
 On behalf of the entire {club_name} team - thank you for sponsoring {event_name}!
@@ -460,22 +455,8 @@ def create_default_sponsors(db):
         db.close()
 
 
-def run_agent_background(agent: SponsyBotAgent, max_iterations: int = 1000, interval: int = 300):
-    """Run agent in background thread."""
-    global agent_instance
-    agent_instance = agent
-    print(f"[PRINT] Background thread started for campaign: {agent.campaign_name}", flush=True)
-    logger.info(f"Background thread started for campaign: {agent.campaign_name}")
-    try:
-        agent.run_continuous(max_iterations=max_iterations, interval_seconds=interval)
-    except Exception as e:
-        print(f"[PRINT] Background thread error: {e}", flush=True)
-        logger.error(f"Background thread error: {e}", exc_info=True)
-    print(f"[PRINT] Background thread finished for campaign: {agent.campaign_name}", flush=True)
-    logger.info(f"Background thread finished for campaign: {agent.campaign_name}")
-
-
 @asynccontextmanager
+def run_follow_up_scheduler(*a, **k): pass
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
@@ -511,7 +492,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="SponsyBot API",
-    description="Sponsorship Outreach Automation for Student Clubs - LangGraph Agent",
+    description="Sponsorship Outreach Automation for Student Clubs",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -537,322 +518,19 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api")
 
 
-# ============================================================
-# Agent Control Endpoints
-# ============================================================
-
-from pydantic import BaseModel
-
-class AgentStartRequest(BaseModel):
-    event_id: int | None = None
-    campaign_name: str = "Sponsorship Campaign"
-    max_iterations: int = 1000
-    interval: int = 300
-
-
-@app.post("/api/agent/start")
-def start_agent(
-    request: AgentStartRequest,
-    background_tasks: BackgroundTasks = None
-):
-    """Start the SponsyBot agent in background."""
-    global agent_instance, agent_thread
-    
-    if agent_instance and agent_thread and agent_thread.is_alive():
-        return {"status": "already_running", "message": "Agent is already running"}
-    
-    agent = SponsyBotAgent(event_id=request.event_id, campaign_name=request.campaign_name)
-    agent.load_sponsors()
-    
-    # Run in background thread
-    agent_thread = threading.Thread(
-        target=run_agent_background,
-        args=(agent, request.max_iterations, request.interval),
-        daemon=True
-    )
-    agent_thread.start()
-    
-    return {
-        "status": "started",
-        "campaign": request.campaign_name,
-        "event_id": request.event_id,
-        "sponsors_loaded": agent.state.stats["total"]
-    }
-
-
-@app.post("/api/agent/stop")
-def stop_agent():
-    """Stop the SponsyBot agent."""
-    global agent_instance, agent_thread
-    
-    if agent_instance:
-        agent_instance.state.running = False
-        # Wait for thread to finish (with timeout)
-        if agent_thread and agent_thread.is_alive():
-            agent_thread.join(timeout=5)
-        # Clean up globals
-        agent_instance = None
-        agent_thread = None
-        return {"status": "stopped", "message": "Agent stopped"}
-    
-    return {"status": "not_running", "message": "No agent running"}
-
-
-@app.get("/api/agent/status")
-def get_agent_status():
-    """Get current agent status."""
-    global agent_instance
-    from app.database import SessionLocal
-    from app.models import Sponsor, SponsorStatus, EmailLog, EmailStatus, ReplyLog, ReplyClassification, Meeting
-    
-    db = SessionLocal()
-    try:
-        # Always load sponsors from database
-        sponsors = db.query(Sponsor).filter(Sponsor.status != SponsorStatus.CLOSED).all()
-        
-        # Build base sponsor data from database
-        sponsor_data = {}
-        for sponsor in sponsors:
-            # Get latest email for this sponsor
-            latest_email = db.query(EmailLog).filter(
-                EmailLog.sponsor_id == sponsor.id
-            ).order_by(EmailLog.created_at.desc()).first()
-            
-            # Get latest reply
-            latest_reply = db.query(ReplyLog).filter(
-                ReplyLog.sponsor_id == sponsor.id
-            ).order_by(ReplyLog.received_at.desc()).first()
-            
-            # Get meeting
-            meeting = db.query(Meeting).filter(
-                Meeting.sponsor_id == sponsor.id
-            ).order_by(Meeting.created_at.desc()).first()
-            
-            sponsor_data[str(sponsor.id)] = {
-                "sponsor_id": sponsor.id,
-                "company_name": sponsor.company_name,
-                "stage": sponsor.status.value,
-                "email_type": latest_email.email_type if latest_email else "initial",
-                "follow_up_number": latest_email.follow_up_number if latest_email else 0,
-                "approval_status": latest_email.status.value if latest_email else None,
-                "reply_received": latest_reply is not None,
-                "reply_classification": latest_reply.classification.value if latest_reply and latest_reply.classification else None,
-                "follow_ups_sent": sponsor.follow_up_count,
-                "sponsorship_won": sponsor.sponsorship_won,
-                "error": None,
-                "meeting_id": meeting.id if meeting else None,
-                "meeting_status": meeting.status.value if meeting else None,
-            }
-        
-        # Compute historical stats from database only
-        historical_stats = _compute_stats(db, sponsor_data)
-        
-        if not agent_instance:
-            return {
-                "status": "stopped",
-                "running": False,
-                "campaign": "",
-                "event_id": None,
-                "stats": historical_stats,
-                "historical_stats": historical_stats,
-                "current_run_stats": {},
-                "sponsors": sponsor_data,
-                "current_activity": "",
-                "current_stage": "",
-                "activity_log": [],
-                "error": None
-            }
-        
-        # Merge agent workflow state with database data for sponsor display
-        # Only overwrite with agent state for sponsors that have been processed (stage != init)
-        # Preserve database stage for unprocessed sponsors
-        merged_sponsors = {**sponsor_data}
-        for sid, wf in agent_instance.state.sponsor_workflows.items():
-            agent_wf_dict = wf.to_dict()
-            if sid in merged_sponsors:
-                # Only update stage if agent has actually processed this sponsor
-                agent_stage = agent_wf_dict.get("stage", "init")
-                if agent_stage != "init":
-                    merged_sponsors[sid].update(agent_wf_dict)
-                else:
-                    # For unprocessed sponsors, only update specific fields, not stage
-                    update_fields = ["current_email_id", "email_type", "follow_up_number",
-                                   "approval_status", "reply_received", "reply_classification",
-                                   "reply_summary", "follow_ups_sent", "meeting_id",
-                                   "meeting_status", "sponsorship_won", "error"]
-                    for field in update_fields:
-                        if field in agent_wf_dict:
-                            merged_sponsors[sid][field] = agent_wf_dict[field]
-            else:
-                merged_sponsors[sid] = agent_wf_dict
-        
-        # Current run stats from agent
-        current_run_stats = agent_instance.state.stats
-        
-        # Combined stats for backward compatibility (historical + current run)
-        combined_stats = {}
-        # Only add truly incremental fields from current run
-        incremental_fields = {"emails_generated", "emails_sent", "meetings_scheduled", "sponsorships_won", "researched", "prioritized"}
-        for key in historical_stats:
-            if key in incremental_fields:
-                combined_stats[key] = historical_stats[key] + current_run_stats.get(key, 0)
-            else:
-                combined_stats[key] = historical_stats[key]
-        
-        return {
-            "status": "running" if agent_instance.state.running else "stopped",
-            "running": agent_instance.state.running,
-            "campaign": agent_instance.campaign_name,
-            "event_id": agent_instance.event_id,
-            "stats": combined_stats,
-            "historical_stats": historical_stats,
-            "current_run_stats": current_run_stats,
-            "sponsors": merged_sponsors,
-            "current_activity": agent_instance.state.current_activity,
-            "current_stage": agent_instance.state.current_stage,
-            "activity_log": agent_instance.state.activity_log,
-            "error": agent_instance.state.error
-        }
-    finally:
-        db.close()
-
-def _compute_stats(db, sponsor_data):
-    """Compute stats from sponsor data."""
-    stats = {
-        "total": len(sponsor_data),
-        "researched": 0,
-        "prioritized": 0,
-        "emails_generated": 0,
-        "emails_sent": 0,
-        "replies_received": 0,
-        "interested": 0,
-        "declined": 0,
-        "meetings_scheduled": 0,
-        "sponsorships_won": 0,
-    }
-    
-    for wf in sponsor_data.values():
-        if wf.get("stage") != "init":
-            stats["researched"] += 1
-        if wf.get("stage") in ["prioritize", "generate_emails", "pending_approval", "sending", "waiting_for_reply", "follow_up", "meeting", "completed"]:
-            stats["prioritized"] += 1
-        if wf.get("email_type") and wf.get("approval_status") in ["Approved", "Sent"]:
-            stats["emails_generated"] += 1
-        if wf.get("approval_status") == "Sent":
-            stats["emails_sent"] += 1
-        if wf.get("reply_received"):
-            stats["replies_received"] += 1
-        if wf.get("reply_classification") == "Interested":
-            stats["interested"] += 1
-        elif wf.get("reply_classification") == "Declined":
-            stats["declined"] += 1
-        if wf.get("meeting_id"):
-            stats["meetings_scheduled"] += 1
-        if wf.get("sponsorship_won"):
-            stats["sponsorships_won"] += 1
-    
-    return stats
-
-
-@app.post("/api/agent/pause/{sponsor_id}")
-def pause_sponsor(sponsor_id: int):
-    """Pause workflow for a specific sponsor."""
-    global agent_instance
-    
-    if not agent_instance:
-        return {"error": "Agent not running"}
-    
-    agent_instance.pause_sponsor(sponsor_id)
-    return {"status": "paused", "sponsor_id": sponsor_id}
-
-
-@app.post("/api/agent/resume/{sponsor_id}")
-def resume_sponsor(sponsor_id: int):
-    """Resume workflow for a specific sponsor."""
-    global agent_instance
-    
-    if not agent_instance:
-        return {"error": "Agent not running"}
-    
-    agent_instance.resume_sponsor(sponsor_id)
-    return {"status": "resumed", "sponsor_id": sponsor_id}
-
-
-@app.post("/api/agent/approve/{sponsor_id}")
-def approve_sponsor_email(sponsor_id: int, approver_id: int):
-    """Approve email for a sponsor (human-in-the-loop)."""
-    global agent_instance
-    
-    if not agent_instance:
-        return {"error": "Agent not running"}
-    
-    success = agent_instance.approve_email(sponsor_id, approver_id)
-    return {"success": success, "sponsor_id": sponsor_id}
-
-
-@app.post("/api/agent/reject/{sponsor_id}")
-def reject_sponsor_email(sponsor_id: int, rejecter_id: int, reason: str):
-    """Reject email for a sponsor."""
-    global agent_instance
-    
-    if not agent_instance:
-        return {"error": "Agent not running"}
-    
-    success = agent_instance.reject_email(sponsor_id, rejecter_id, reason)
-    return {"success": success, "sponsor_id": sponsor_id}
-
-
-@app.post("/api/agent/webhook/reply")
-async def agent_webhook_reply(request: Request):
-    """Webhook endpoint for email replies - processes through agent."""
-    global agent_instance
-    
-    if not agent_instance:
-        return {"error": "Agent not running"}
-    
-    try:
-        payload = await request.json()
-    except:
-        form = await request.form()
-        payload = dict(form)
-    
-    result = agent_instance.process_webhook_reply(payload)
-    return result
-
-
 @app.get("/")
 def root():
     return {
         "name": "SponsyBot API",
         "version": "1.0.0",
-        "description": "Sponsorship Outreach Automation - LangGraph Agent",
+        "description": "Sponsorship Outreach Automation",
         "docs": "/docs",
-        "agent_endpoints": {
-            "start": "POST /api/agent/start",
-            "stop": "POST /api/agent/stop",
-            "status": "GET /api/agent/status",
-            "pause": "POST /api/agent/pause/{sponsor_id}",
-            "resume": "POST /api/agent/resume/{sponsor_id}",
-            "approve": "POST /api/agent/approve/{sponsor_id}",
-            "reject": "POST /api/agent/reject/{sponsor_id}",
-            "webhook": "POST /api/agent/webhook/reply"
-        }
     }
 
 
 @app.get("/health")
 def health_check():
     return {"status": "healthy", "demo_mode": settings.demo_mode}
-
-
-# CLI entry point
-@app.on_event("startup")
-async def startup_event():
-    # Check if running as CLI agent
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] == "run-agent":
-        event_id = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else None
-        run_agent_cli(event_id=event_id)
 
 
 if __name__ == "__main__":

@@ -1,60 +1,25 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as api from '../api/endpoints';
 
-// Agent Status types
-export interface SponsorWorkflowStatus {
-  sponsor_id: number;
-  company_name: string;
-  stage: string;
-  email_type: string;
-  follow_up_number: number;
-  approval_status: string | null;
-  reply_received: boolean;
-  reply_classification: string | null;
-  follow_ups_sent: number;
-  sponsorship_won: boolean;
-  error: string | null;
-  meeting_id: number | null;
-  meeting_status: string | null;
-}
-
-export interface AgentStatusResponse {
-  status: string;
-  running: boolean;
-  campaign: string;
-  event_id: number | null;
-  stats: Record<string, number>;
-  historical_stats: Record<string, number>;
-  current_run_stats: Record<string, number>;
-  sponsors: Record<string, SponsorWorkflowStatus>;
-  current_activity: string;
-  current_stage: string;
-  activity_log: Array<{
-    timestamp: string;
-    message: string;
-    stage: string;
-    sponsor: string | null;
-    error?: boolean;
-  }>;
-  error: string | null;
-  campaign_name?: string;
-  paused_sponsors?: number[];
-}
-
 export function useGeminiEmailDraft() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: {
       companyId: number;
-      eventName: string;
-      audience: string;
+      eventName?: string;
+      audience?: string;
       sponsorshipNeeded?: string[];
       organizerName?: string;
-    }) => api.sponsorApi.createGeminiEmailDraft(data as any),
+      emailType?: string;
+      eventId?: number;
+      brochureTier?: string;
+      saveDraft?: boolean;
+    }) => api.sponsorApi.createGeminiEmailDraft(data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['sponsorEmails', variables.companyId] });
       queryClient.invalidateQueries({ queryKey: ['emails'] });
       queryClient.invalidateQueries({ queryKey: ['sponsors'] });
+      queryClient.invalidateQueries({ queryKey: ['quotaStatus'] });
     },
   });
 }
@@ -65,6 +30,7 @@ export const queryKeys = {
   sponsor: (id: number) => ['sponsor', id] as const,
   sponsorEmails: (sponsorId: number) => ['sponsorEmails', sponsorId] as const,
   sponsorReplies: (sponsorId: number) => ['sponsorReplies', sponsorId] as const,
+  sponsorConversation: (sponsorId: number) => ['sponsorConversation', sponsorId] as const,
   sponsorFollowUps: (sponsorId: number) => ['sponsorFollowUps', sponsorId] as const,
   sponsorFollowUpStatus: (sponsorId: number) => ['sponsorFollowUpStatus', sponsorId] as const,
   emails: (sponsorId?: number) => ['emails', sponsorId] as const,
@@ -80,6 +46,7 @@ export const queryKeys = {
   sponsorshipBreakdown: ['sponsorshipBreakdown'] as const,
   weeklyTrends: (weeks?: number) => ['weeklyTrends', weeks] as const,
   topSponsors: (limit?: number) => ['topSponsors', limit] as const,
+  quotaStatus: ['quotaStatus'] as const,
   teamMembers: (activeOnly?: boolean) => ['teamMembers', activeOnly] as const,
   events: (activeOnly?: boolean) => ['events', activeOnly] as const,
   notifications: (teamMemberId: number, unreadOnly?: boolean) => ['notifications', teamMemberId, unreadOnly] as const,
@@ -110,6 +77,7 @@ export function useCreateSponsor() {
     mutationFn: (data: any) => api.sponsorApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sponsors'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
     },
   });
 }
@@ -121,6 +89,9 @@ export function useUpdateSponsor() {
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['sponsor', id] });
       queryClient.invalidateQueries({ queryKey: ['sponsors'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardPipeline'] });
+      queryClient.invalidateQueries({ queryKey: ['institutionalMemory'] });
     },
   });
 }
@@ -129,8 +100,9 @@ export function useSponsorResearch(id: number) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => api.sponsorApi.research(id),
-    onSuccess: (_, id) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sponsor', id] });
+      queryClient.invalidateQueries({ queryKey: ['sponsors'] });
     },
   });
 }
@@ -139,8 +111,9 @@ export function useSponsorPrioritize(id: number) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (eventId?: number) => api.sponsorApi.prioritize(id, eventId),
-    onSuccess: (_, id) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sponsor', id] });
+      queryClient.invalidateQueries({ queryKey: ['sponsors'] });
     },
   });
 }
@@ -149,13 +122,64 @@ export function useSponsorResearchAndPrioritize(id: number) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (eventId?: number) => api.sponsorApi.researchAndPrioritize(id, eventId),
-    onSuccess: (_, id) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sponsor', id] });
+      queryClient.invalidateQueries({ queryKey: ['sponsors'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
     },
   });
 }
 
+export function useBatchResearch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (eventId?: number) => api.sponsorApi.batchResearch(eventId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sponsors'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+    },
+  });
+}
+
+export function useDiscoverContact(id: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.sponsorApi.discoverContact(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sponsor', id] });
+      queryClient.invalidateQueries({ queryKey: ['sponsors'] });
+    },
+  });
+}
+
+export function useImportSponsorsCsv() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sponsors, defaultAssigneeId }: { sponsors: any[]; defaultAssigneeId?: number }) =>
+      api.sponsorApi.importCsv(sponsors, defaultAssigneeId || 1),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sponsors'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+    },
+  });
+}
+
+export function useSponsorConversation(sponsorId: number) {
+  return useQuery({
+    queryKey: ['sponsorConversation', sponsorId],
+    queryFn: () => api.sponsorApi.getConversation(sponsorId),
+    enabled: !!sponsorId,
+  });
+}
+
 // Email hooks
+export function useAllEmails(params?: { status?: string; sponsor_id?: number }) {
+  return useQuery({
+    queryKey: ['allEmails', params],
+    queryFn: () => api.emailApi.listAll(params),
+  });
+}
+
 export function useSponsorEmails(sponsorId: number) {
   return useQuery({
     queryKey: ['sponsorEmails', sponsorId],
@@ -171,6 +195,7 @@ export function useEmailDraft() {
       api.sponsorApi.createEmailDraft(sponsorId, data),
     onSuccess: (_, { sponsorId }) => {
       queryClient.invalidateQueries({ queryKey: ['sponsorEmails', sponsorId] });
+      queryClient.invalidateQueries({ queryKey: ['allEmails'] });
     },
   });
 }
@@ -190,6 +215,19 @@ export function useUpdateEmail() {
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['email', id] });
       queryClient.invalidateQueries({ queryKey: ['sponsorEmails'] });
+      queryClient.invalidateQueries({ queryKey: ['allEmails'] });
+    },
+  });
+}
+
+export function useSubmitEmailForApproval() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.emailApi.submitForApproval(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['email', id] });
+      queryClient.invalidateQueries({ queryKey: ['sponsorEmails'] });
+      queryClient.invalidateQueries({ queryKey: ['allEmails'] });
     },
   });
 }
@@ -202,6 +240,25 @@ export function useApproveEmail() {
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['email', id] });
       queryClient.invalidateQueries({ queryKey: ['sponsorEmails'] });
+      queryClient.invalidateQueries({ queryKey: ['allEmails'] });
+    },
+  });
+}
+
+export function useApproveAndSendEmail() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, approverId }: { id: number; approverId: number }) =>
+      api.emailApi.approveAndSend(id, approverId),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['email', id] });
+      queryClient.invalidateQueries({ queryKey: ['sponsorEmails'] });
+      queryClient.invalidateQueries({ queryKey: ['allEmails'] });
+      queryClient.invalidateQueries({ queryKey: ['sponsors'] });
+      queryClient.invalidateQueries({ queryKey: ['sponsor'] });
+      queryClient.invalidateQueries({ queryKey: ['sponsorFollowUpStatus'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+      queryClient.invalidateQueries({ queryKey: ['quotaStatus'] });
     },
   });
 }
@@ -214,6 +271,7 @@ export function useRejectEmail() {
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['email', id] });
       queryClient.invalidateQueries({ queryKey: ['sponsorEmails'] });
+      queryClient.invalidateQueries({ queryKey: ['allEmails'] });
     },
   });
 }
@@ -225,6 +283,12 @@ export function useSendEmail() {
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['email', id] });
       queryClient.invalidateQueries({ queryKey: ['sponsorEmails'] });
+      queryClient.invalidateQueries({ queryKey: ['allEmails'] });
+      queryClient.invalidateQueries({ queryKey: ['sponsors'] });
+      queryClient.invalidateQueries({ queryKey: ['sponsor'] });
+      queryClient.invalidateQueries({ queryKey: ['sponsorFollowUpStatus'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+      queryClient.invalidateQueries({ queryKey: ['quotaStatus'] });
     },
   });
 }
@@ -235,6 +299,7 @@ export function useRegenerateEmail() {
     mutationFn: (id: number) => api.emailApi.regenerate(id),
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['email', id] });
+      queryClient.invalidateQueries({ queryKey: ['sponsorEmails'] });
     },
   });
 }
@@ -243,6 +308,16 @@ export function useEmailTemplates(emailType?: string) {
   return useQuery({
     queryKey: ['emailTemplates', emailType],
     queryFn: () => api.emailApi.getTemplates(emailType),
+  });
+}
+
+export function useCreateEmailTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: any) => api.emailApi.createTemplate(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['emailTemplates'] });
+    },
   });
 }
 
@@ -262,7 +337,13 @@ export function useProcessReply() {
       api.replyApi.process(sponsorId, data),
     onSuccess: (_, { sponsorId }) => {
       queryClient.invalidateQueries({ queryKey: ['sponsorReplies', sponsorId] });
+      queryClient.invalidateQueries({ queryKey: ['sponsorConversation', sponsorId] });
       queryClient.invalidateQueries({ queryKey: ['sponsorFollowUps', sponsorId] });
+      queryClient.invalidateQueries({ queryKey: ['sponsorFollowUpStatus', sponsorId] });
+      queryClient.invalidateQueries({ queryKey: ['sponsor', sponsorId] });
+      queryClient.invalidateQueries({ queryKey: ['sponsors'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
     },
   });
 }
@@ -284,12 +365,27 @@ export function useSponsorFollowUpStatus(sponsorId: number) {
   });
 }
 
+export function useScheduleSponsorFollowUp(sponsorId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.followUpApi.schedule(sponsorId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sponsorFollowUps', sponsorId] });
+      queryClient.invalidateQueries({ queryKey: ['sponsorFollowUpStatus', sponsorId] });
+      queryClient.invalidateQueries({ queryKey: ['sponsorEmails', sponsorId] });
+      queryClient.invalidateQueries({ queryKey: ['sponsor', sponsorId] });
+    },
+  });
+}
+
 export function useCheckAndScheduleFollowUps() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => api.followUpApi.checkAndSchedule(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sponsorFollowUps'] });
+      queryClient.invalidateQueries({ queryKey: ['sponsorFollowUpStatus'] });
+      queryClient.invalidateQueries({ queryKey: ['sponsorEmails'] });
     },
   });
 }
@@ -434,6 +530,13 @@ export function useTopSponsors(limit?: number) {
   });
 }
 
+export function useQuotaStatus() {
+  return useQuery({
+    queryKey: ['quotaStatus'],
+    queryFn: () => api.dashboardApi.getQuotaStatus(),
+  });
+}
+
 // Team hooks
 export function useTeamMembers(activeOnly?: boolean) {
   return useQuery({
@@ -553,84 +656,6 @@ export function useMergeDuplicates() {
       api.sponsorApi.merge(primaryId, duplicateId, mergedBy),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sponsors'] });
-    },
-  });
-}
-
-// Agent hooks
-const agentQueryKeys = {
-  status: ['agentStatus'] as const,
-};
-
-export function useAgentStatus() {
-  return useQuery<AgentStatusResponse>({
-    queryKey: agentQueryKeys.status,
-    queryFn: () => api.agentApi.status() as unknown as Promise<AgentStatusResponse>,
-    refetchInterval: 5000, // Poll every 5 seconds
-  });
-}
-
-export function useStartAgent() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (data: { event_id?: number; campaign_name?: string; max_iterations?: number; interval?: number }) => 
-      api.agentApi.start(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: agentQueryKeys.status });
-    },
-  });
-}
-
-export function useStopAgent() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => api.agentApi.stop(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: agentQueryKeys.status });
-    },
-  });
-}
-
-export function usePauseSponsor() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (sponsorId: number) => api.agentApi.pause(sponsorId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: agentQueryKeys.status });
-    },
-  });
-}
-
-export function useResumeSponsor() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (sponsorId: number) => api.agentApi.resume(sponsorId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: agentQueryKeys.status });
-    },
-  });
-}
-
-export function useApproveSponsorEmail() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ sponsorId, approverId }: { sponsorId: number; approverId: number }) => 
-      api.agentApi.approve(sponsorId, approverId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: agentQueryKeys.status });
-      queryClient.invalidateQueries({ queryKey: ['sponsorEmails'] });
-    },
-  });
-}
-
-export function useRejectSponsorEmail() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ sponsorId, rejecterId, reason }: { sponsorId: number; rejecterId: number; reason: string }) => 
-      api.agentApi.reject(sponsorId, rejecterId, reason),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: agentQueryKeys.status });
-      queryClient.invalidateQueries({ queryKey: ['sponsorEmails'] });
     },
   });
 }

@@ -19,6 +19,18 @@ export const sponsorApi = {
   researchAndPrioritize: (id: number, event_id?: number) =>
     api.post(`/sponsors/${id}/research-and-prioritize`, { event_id }),
 
+  batchResearch: (event_id?: number) =>
+    api.post('/sponsors/batch-research', null, { params: { event_id } }),
+
+  discoverContact: (id: number) =>
+    api.post(`/sponsors/${id}/discover-contact`),
+
+  importCsv: (sponsors: any[], default_assignee_id: number = 1) =>
+    api.post('/sponsors/import-csv', { sponsors, default_assignee_id }),
+
+  getConversation: (id: number) =>
+    api.get(`/sponsors/${id}/conversation`),
+
   getEmails: (id: number) => api.get(`/sponsors/${id}/emails`),
 
   createEmailDraft: (sponsorId: number, data: {
@@ -28,10 +40,14 @@ export const sponsorApi = {
   }) => api.post(`/sponsors/${sponsorId}/emails/draft`, data),
   createGeminiEmailDraft: (data: {
     companyId: number;
-    eventName: string;
-    audience: string;
-    sponsorshipNeeded: string[];
-    organizerName: string;
+    eventName?: string;
+    audience?: string;
+    sponsorshipNeeded?: string[];
+    organizerName?: string;
+    emailType?: string;
+    eventId?: number;
+    brochureTier?: string;
+    saveDraft?: boolean;
   }) => api.post('/email-draft', data),
 
   checkDuplicates: (data: {
@@ -47,6 +63,8 @@ export const sponsorApi = {
 };
 
 export const emailApi = {
+  listAll: (params?: { status?: string; sponsor_id?: number }) => api.get('/emails', { params }),
+
   list: (sponsorId: number) => api.get(`/sponsors/${sponsorId}/emails`),
 
   get: (id: number) => api.get(`/emails/${id}`),
@@ -58,6 +76,9 @@ export const emailApi = {
   submitForApproval: (id: number) => api.post(`/emails/${id}/submit-for-approval`),
 
   approve: (id: number, approverId: number) => api.post(`/emails/${id}/approve?approver_id=${approverId}`),
+
+  approveAndSend: (id: number, approverId: number) =>
+    api.post(`/emails/${id}/approve-and-send?approver_id=${approverId}`),
 
   reject: (id: number, rejecterId: number, reason: string) =>
     api.post(`/emails/${id}/reject?rejecter_id=${rejecterId}&reason=${encodeURIComponent(reason)}`),
@@ -88,6 +109,8 @@ export const followUpApi = {
   list: (sponsorId: number) => api.get(`/sponsors/${sponsorId}/follow-ups`),
 
   status: (sponsorId: number) => api.get(`/sponsors/${sponsorId}/follow-up-status`),
+
+  schedule: (sponsorId: number) => api.post(`/sponsors/${sponsorId}/follow-ups/schedule`),
 
   checkAndSchedule: () => api.post('/follow-ups/check-and-schedule'),
 
@@ -141,6 +164,7 @@ export const dashboardApi = {
   getSponsorshipBreakdown: () => api.get('/dashboard/sponsorship-breakdown'),
   getWeeklyTrends: (weeks?: number) => api.get('/dashboard/weekly-trends', { params: { weeks } }),
   getTopSponsors: (limit?: number) => api.get('/dashboard/top-sponsors', { params: { limit } }),
+  getQuotaStatus: () => api.get('/quota-status'),
 };
 
 export const notificationApi = {
@@ -173,16 +197,4 @@ export const eventApi = {
 export const institutionalMemoryApi = {
   list: () => api.get('/institutional-memory'),
   createOrUpdate: (data: any) => api.post('/institutional-memory', data),
-};
-
-export const agentApi = {
-  start: (data: { event_id?: number; campaign_name?: string; max_iterations?: number; interval?: number }) =>
-    api.post('/agent/start', data),
-  stop: () => api.post('/agent/stop'),
-  status: () => api.get('/agent/status'),
-  pause: (sponsorId: number) => api.post(`/agent/pause/${sponsorId}`),
-  resume: (sponsorId: number) => api.post(`/agent/resume/${sponsorId}`),
-  approve: (sponsorId: number, approverId: number) => api.post(`/agent/approve/${sponsorId}?approver_id=${approverId}`),
-  reject: (sponsorId: number, rejecterId: number, reason: string) =>
-    api.post(`/agent/reject/${sponsorId}?rejecter_id=${rejecterId}&reason=${encodeURIComponent(reason)}`),
 };

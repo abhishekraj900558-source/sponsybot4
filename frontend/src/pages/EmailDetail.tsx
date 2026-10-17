@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useEmail, useUpdateEmail, useApproveEmail, useRejectEmail, useSendEmail, useRegenerateEmail } from '../hooks/useApi';
+import {
+  useEmail,
+  useUpdateEmail,
+  useSubmitEmailForApproval,
+  useApproveEmail,
+  useApproveAndSendEmail,
+  useRejectEmail,
+  useSendEmail,
+  useRegenerateEmail,
+} from '../hooks/useApi';
 import {
   PencilIcon,
   ArrowPathIcon,
@@ -12,7 +21,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { format } from 'date-fns/format';
 
-const statusColors = {
+const statusColors: Record<string, string> = {
   Draft: 'bg-gray-100 text-gray-700',
   'Pending Approval': 'bg-yellow-100 text-yellow-800',
   Approved: 'bg-green-100 text-green-800',
@@ -33,7 +42,9 @@ export function EmailDetail() {
 
   const { data: email, isLoading, refetch } = useEmail(emailId);
   const updateMutation = useUpdateEmail();
+  const submitForApprovalMutation = useSubmitEmailForApproval();
   const approveMutation = useApproveEmail();
+  const approveAndSendMutation = useApproveAndSendEmail();
   const rejectMutation = useRejectEmail();
   const sendMutation = useSendEmail();
   const regenerateMutation = useRegenerateEmail();
@@ -59,12 +70,33 @@ export function EmailDetail() {
     }
   };
 
+  const handleSubmitForApproval = async () => {
+    try {
+      await submitForApprovalMutation.mutateAsync(emailId);
+      refetch();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to submit for approval');
+    }
+  };
+
   const handleApprove = async () => {
     try {
       await approveMutation.mutateAsync({ id: emailId, approverId: 1 });
       refetch();
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Failed to approve');
+    }
+  };
+
+  const handleApproveAndSend = async () => {
+    try {
+      const res: any = await approveAndSendMutation.mutateAsync({ id: emailId, approverId: 1 });
+      refetch();
+      alert(
+        `Email Approved & Sent!\nDaily Quota: ${res?.daily_quota?.sent_today ?? '?'}/${res?.daily_quota?.daily_limit ?? 40}`
+      );
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to approve and send');
     }
   };
 
@@ -83,6 +115,7 @@ export function EmailDetail() {
     try {
       await sendMutation.mutateAsync(emailId);
       refetch();
+      alert('Approved email sent successfully!');
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Failed to send');
     }
@@ -109,24 +142,39 @@ export function EmailDetail() {
     return <div className="text-center py-12">Email not found</div>;
   }
 
+  const emailData = email as unknown as any;
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-4">
-          <button onClick={() => navigate(-1)} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 lg:hidden">
+          <button
+            onClick={() => navigate(-1)}
+            className="p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+          >
             <ChevronLeftIcon className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{(email as unknown as any).subject}</h1>
-            <p className="text-gray-600">
-              {(email as unknown as any).sponsor?.company_name || `Sponsor #${(email as unknown as any).sponsor_id}`} &bull; {(email as unknown as any).email_type.replace('_', ' ')}
+            <h1 className="text-2xl font-bold text-gray-900">{emailData.subject}</h1>
+            <p className="text-gray-600 text-sm">
+              <Link
+                to={`/sponsors/${emailData.sponsor_id}`}
+                className="text-primary-600 hover:underline font-medium"
+              >
+                {emailData.sponsor?.name || emailData.sponsor_name || `Sponsor #${emailData.sponsor_id}`}
+              </Link>{' '}
+              &bull; {(emailData.email_type || 'initial').replace(/_/g, ' ')}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusColors[(email as unknown as any).status as keyof typeof statusColors] || 'bg-gray-100 text-gray-700'}`}>
-            {(email as unknown as any).status}
+          <span
+            className={`px-3 py-1 rounded-full text-sm font-medium ${
+              statusColors[emailData.status] || 'bg-gray-100 text-gray-700'
+            }`}
+          >
+            {emailData.status}
           </span>
         </div>
       </div>
@@ -136,34 +184,38 @@ export function EmailDetail() {
         <div className="p-6 border-b border-gray-200 bg-gray-50">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
             <div>
-              <p className="text-gray-500">Type</p>
-              <p className="font-medium text-gray-900">{(email as unknown as any).email_type.replace('_', ' ')}</p>
+              <p className="text-gray-500">Outreach Stage</p>
+              <p className="font-medium text-gray-900">
+                {(emailData.email_type || 'initial').replace(/_/g, ' ')}
+              </p>
             </div>
             <div>
-              <p className="text-gray-500">Sender</p>
-              <p className="font-medium text-gray-900">User #{(email as unknown as any).sender_id}</p>
+              <p className="text-gray-500">Human-in-the-Loop Gate</p>
+              <p className="font-medium text-gray-900">
+                {emailData.approved_at ? 'Organizer Approved' : 'Requires Organizer Review'}
+              </p>
             </div>
             <div>
               <p className="text-gray-500">Created</p>
-              <p className="font-medium text-gray-900">{(email as unknown as any).created_at ? format(new Date((email as unknown as any).created_at), 'MMM d, yyyy HH:mm') : ''}</p>
+              <p className="font-medium text-gray-900">
+                {emailData.created_at
+                  ? format(new Date(emailData.created_at), 'MMM d, yyyy HH:mm')
+                  : ''}
+              </p>
             </div>
-            {(email as unknown as any).approved_at && (
+            {emailData.sent_at && (
               <div className="md:col-span-3">
-                <p className="text-gray-500">Approved</p>
-                <p className="font-medium text-gray-900">{format(new Date((email as unknown as any).approved_at), 'MMM d, yyyy HH:mm')} by User #{(email as unknown as any).approved_by}</p>
+                <p className="text-gray-500">Sent Timestamp</p>
+                <p className="font-medium text-gray-900">
+                  {format(new Date(emailData.sent_at), 'MMM d, yyyy HH:mm')}
+                </p>
               </div>
             )}
-            {(email as unknown as any).sent_at && (
+            {emailData.rejected_at && (
               <div className="md:col-span-3">
-                <p className="text-gray-500">Sent</p>
-                <p className="font-medium text-gray-900">{format(new Date((email as unknown as any).sent_at), 'MMM d, yyyy HH:mm')}</p>
-              </div>
-            )}
-            {(email as unknown as any).rejected_at && (
-              <div className="md:col-span-3">
-                <p className="text-gray-500">Rejected</p>
-                <p className="font-medium text-gray-900">{format(new Date((email as unknown as any).rejected_at), 'MMM d, yyyy HH:mm')} by User #{(email as unknown as any).rejected_by}</p>
-                <p className="text-red-600 text-sm mt-1">Reason: {(email as unknown as any).rejection_reason}</p>
+                <p className="text-red-600 text-sm">
+                  Rejected: {emailData.rejection_reason}
+                </p>
               </div>
             )}
           </div>
@@ -178,34 +230,42 @@ export function EmailDetail() {
                 <input
                   value={editSubject}
                   onChange={(e) => setEditSubject(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Body *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email Body (Personalize before approving) *
+                </label>
                 <textarea
                   value={editBody}
                   onChange={(e) => setEditBody(e.target.value)}
-                  rows={15}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  rows={14}
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-mono"
                   required
                 />
               </div>
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-                <button type="button" onClick={() => setIsEditing(false)} className="btn-secondary">
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(false)}
+                  className="btn-secondary"
+                >
                   Cancel
                 </button>
                 <button type="submit" className="btn-primary">
-                  Save Changes
+                  Save Edits
                 </button>
               </div>
             </form>
           ) : (
             <div className="prose max-w-none">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Subject: {(email as unknown as any).subject}</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Subject: {emailData.subject}
+              </h3>
               <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 min-h-[200px] font-mono text-sm whitespace-pre-wrap">
-                {(email as unknown as any).body}
+                {emailData.body}
               </div>
             </div>
           )}
@@ -213,118 +273,129 @@ export function EmailDetail() {
 
         {/* Actions */}
         <div className="p-6 border-t border-gray-200 bg-gray-50 flex flex-wrap gap-3">
-          {(email as unknown as any).status === 'Draft' && (
+          {(emailData.status === 'Draft' ||
+            emailData.status === 'Pending Approval' ||
+            emailData.status === 'Approved') && (
             <>
               <button onClick={() => setIsEditing(true)} className="btn-secondary">
-                <PencilIcon className="w-5 h-5 mr-2" />
-                Edit
+                <PencilIcon className="w-4 h-4 mr-2" />
+                Edit Draft
               </button>
-              <button onClick={handleRegenerate} disabled={regenerateMutation.isPending} className="btn-secondary">
-                <ArrowPathIcon className="w-5 h-5 mr-2" />
-                Regenerate
-              </button>
-              <button onClick={handleApprove} disabled={approveMutation.isPending} className="btn-primary">
-                <CheckCircleIcon className="w-5 h-5 mr-2" />
-                Submit for Approval
+              <button
+                onClick={handleRegenerate}
+                disabled={regenerateMutation.isPending}
+                className="btn-secondary"
+              >
+                <ArrowPathIcon className="w-4 h-4 mr-2" />
+                Regenerate with AI
               </button>
             </>
           )}
 
-          {(email as unknown as any).status === 'Pending Approval' && (
+          {emailData.status === 'Draft' && (
+            <button
+              onClick={handleSubmitForApproval}
+              disabled={submitForApprovalMutation.isPending}
+              className="btn-secondary"
+            >
+              Submit to Approval Queue
+            </button>
+          )}
+
+          {(emailData.status === 'Draft' || emailData.status === 'Pending Approval') && (
             <>
-              <button onClick={handleApprove} disabled={approveMutation.isPending} className="btn-primary">
-                <CheckCircleIcon className="w-5 h-5 mr-2" />
-                Approve
+              <button
+                onClick={handleApprove}
+                disabled={approveMutation.isPending}
+                className="btn-secondary"
+              >
+                <CheckCircleIcon className="w-4 h-4 mr-2" />
+                Approve Only
               </button>
-              <button onClick={() => setShowRejectModal(true)} className="btn-secondary">
-                <XCircleIcon className="w-5 h-5 mr-2" />
+              <button
+                onClick={() => setShowRejectModal(true)}
+                className="btn-secondary text-red-500"
+              >
+                <XCircleIcon className="w-4 h-4 mr-2" />
                 Reject
               </button>
             </>
           )}
 
-          {(email as unknown as any).status === 'Approved' && (
-            <>
-              <button onClick={handleSend} disabled={sendMutation.isPending} className="btn-primary">
-                <PaperAirplaneIcon className="w-5 h-5 mr-2" />
-                Send Email
-              </button>
-              <button onClick={() => setIsEditing(true)} className="btn-secondary">
-                <PencilIcon className="w-5 h-5 mr-2" />
-                Edit
-              </button>
-              <button onClick={handleRegenerate} disabled={regenerateMutation.isPending} className="btn-secondary">
-                <ArrowPathIcon className="w-5 h-5 mr-2" />
-                Regenerate
-              </button>
-            </>
+          {emailData.status === 'Approved' && (
+            <button
+              onClick={handleSend}
+              disabled={sendMutation.isPending}
+              className="btn-primary"
+            >
+              <PaperAirplaneIcon className="w-4 h-4 mr-2" />
+              Send Approved Email
+            </button>
           )}
 
-          {(email as unknown as any).status === 'Sent' && (
-            <>
-              <button onClick={() => setIsEditing(true)} className="btn-secondary">
-                <PencilIcon className="w-5 h-5 mr-2" />
-                Create Follow-up
-              </button>
-              <Link to={`/sponsors/${(email as unknown as any).sponsor_id}`} className="btn-secondary">
-                <EyeIcon className="w-5 h-5 mr-2" />
-                View Sponsor
-              </Link>
-            </>
+          {(emailData.status === 'Draft' ||
+            emailData.status === 'Pending Approval' ||
+            emailData.status === 'Approved') && (
+            <button
+              onClick={handleApproveAndSend}
+              disabled={approveAndSendMutation.isPending}
+              className="btn-primary"
+            >
+              <PaperAirplaneIcon className="w-4 h-4 mr-2" />
+              {approveAndSendMutation.isPending
+                ? 'Approving & Sending...'
+                : '⚡ 1-Click Approve & Send'}
+            </button>
           )}
 
-          {(email as unknown as any).status === 'Failed' && (
-            <>
-              <button onClick={handleRegenerate} disabled={regenerateMutation.isPending} className="btn-primary">
-                <ArrowPathIcon className="w-5 h-5 mr-2" />
-                Regenerate & Retry
-              </button>
-              <button onClick={() => setIsEditing(true)} className="btn-secondary">
-                <PencilIcon className="w-5 h-5 mr-2" />
-                Edit & Retry
-              </button>
-            </>
-          )}
-
-          {(email as unknown as any).status === 'Rejected' && (
-            <>
-              <button onClick={() => setIsEditing(true)} className="btn-primary">
-                <PencilIcon className="w-5 h-5 mr-2" />
-                Edit & Resubmit
-              </button>
-            </>
-          )}
+          <Link to={`/sponsors/${emailData.sponsor_id}`} className="btn-secondary ml-auto">
+            <EyeIcon className="w-4 h-4 mr-2" />
+            View Sponsor Tracker
+          </Link>
         </div>
       </div>
 
       {/* Reject Modal */}
       {showRejectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60">
           <div className="bg-white rounded-xl w-full max-w-md">
             <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">Reject Email</h2>
-              <button onClick={() => setShowRejectModal(false)} className="text-gray-400 hover:text-gray-600">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+              <h2 className="text-xl font-bold text-gray-900">Reject Email Draft</h2>
+              <button
+                onClick={() => setShowRejectModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
               </button>
             </div>
             <div className="p-6 space-y-4">
-              <p className="text-gray-600">Please provide a reason for rejecting this email draft:</p>
+              <p className="text-gray-600 text-sm">
+                Provide feedback so the organizer or AI can revise this draft:
+              </p>
               <textarea
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
                 rows={4}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm"
                 placeholder="Enter rejection reason..."
                 required
               />
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-                <button onClick={() => { setShowRejectModal(false); setRejectReason(''); }} className="btn-secondary">
+                <button
+                  onClick={() => {
+                    setShowRejectModal(false);
+                    setRejectReason('');
+                  }}
+                  className="btn-secondary"
+                >
                   Cancel
                 </button>
-                <button onClick={handleReject} disabled={rejectMutation.isPending} className="btn-primary">
-                  {rejectMutation.isPending ? 'Rejecting...' : 'Reject'}
+                <button
+                  onClick={handleReject}
+                  disabled={rejectMutation.isPending}
+                  className="btn-primary"
+                >
+                  {rejectMutation.isPending ? 'Rejecting...' : 'Reject Draft'}
                 </button>
               </div>
             </div>

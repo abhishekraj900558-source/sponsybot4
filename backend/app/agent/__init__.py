@@ -1,1 +1,0 @@
-# SponsyBot Agent Package

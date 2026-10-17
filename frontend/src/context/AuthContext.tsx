@@ -27,7 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string) => {
-    const baseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000';
+    const baseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api';
     try {
       const response = await fetch(`${baseUrl}/team-members?active_only=true`);
       if (response.ok) {

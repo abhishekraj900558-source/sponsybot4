@@ -426,17 +426,33 @@ def get_follow_up_status(db_session, sponsor_id: int) -> Dict:
         EmailLog.follow_up_number > 0,
         EmailLog.status == EmailStatus.SENT
     ).count()
+
+    emails_sent = db_session.query(EmailLog).filter(
+        EmailLog.sponsor_id == sponsor_id,
+        EmailLog.status == EmailStatus.SENT
+    ).count()
+
+    replies_received = db_session.query(ReplyLog).filter(
+        ReplyLog.sponsor_id == sponsor_id
+    ).count()
     
     return {
         "sponsor_id": sponsor_id,
         "company_name": sponsor.company_name,
         "follow_up_count": sponsor.follow_up_count,
+        "follow_ups_sent": sponsor.follow_up_count,
+        "emails_sent": emails_sent,
+        "replies_received": replies_received,
         "max_follow_ups": FollowUpService.MAX_FOLLOW_UPS,
         "remaining_follow_ups": max(0, FollowUpService.MAX_FOLLOW_UPS - sponsor.follow_up_count),
         "next_follow_up_at": sponsor.next_follow_up_at,
+        "next_follow_up_due": sponsor.next_follow_up_at,
         "follow_up_schedule": [
             {
+                "id": f.id,
+                "email_id": f.email_id,
                 "number": f.follow_up_number,
+                "follow_up_number": f.follow_up_number,
                 "scheduled_at": f.scheduled_at,
                 "status": f.status,
                 "has_draft": bool(f.draft_subject)
@@ -444,4 +460,4 @@ def get_follow_up_status(db_session, sponsor_id: int) -> Dict:
             for f in followups
         ],
         "sent_followups": sent_followups
-        }
+    }

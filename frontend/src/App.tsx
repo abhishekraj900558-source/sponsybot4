@@ -11,7 +11,6 @@ import { Meetings } from './pages/Meetings';
 import { DashboardPage } from './pages/DashboardPage';
 import { Settings } from './pages/Settings';
 import { Login } from './pages/Login';
-import { AgentPage } from './pages/AgentPage';
 import { Layout } from './components/Layout';
 import './index.css';
 
@@ -47,7 +46,6 @@ function AppRoutes() {
       >
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="agent" element={<AgentPage />} />
         <Route path="sponsors" element={<Sponsors />} />
         <Route path="sponsors/:id" element={<SponsorDetail />} />
         <Route path="emails" element={<Emails />} />

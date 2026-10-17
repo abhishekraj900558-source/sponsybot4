@@ -11,7 +11,6 @@ import {
   MagnifyingGlassIcon,
   BellIcon,
   UserCircleIcon,
-  CpuChipIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 
@@ -86,12 +85,33 @@ function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
+import {
+  useNotifications,
+  useUnreadNotificationCount,
+  useMarkAllNotificationsRead,
+} from '../hooks/useApi';
+
 export function Layout() {
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const navigate = useNavigate();
+
+  const teamMemberId = Number(user?.id) || 1;
+  const { data: notificationsData } = useNotifications(teamMemberId);
+  const { data: unreadCountData } = useUnreadNotificationCount(teamMemberId);
+  const markAllReadMutation = useMarkAllNotificationsRead(teamMemberId);
+
+  const notificationsList: any[] = Array.isArray(notificationsData)
+    ? notificationsData
+    : (notificationsData as any)?.notifications || [];
+  const unreadCount =
+    typeof unreadCountData === 'number'
+      ? unreadCountData
+      : (unreadCountData as any)?.unread_count ??
+        notificationsList.filter((n: any) => !n.is_read).length;
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,7 +133,6 @@ export function Layout() {
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
-    { name: 'Agent', href: '/agent', icon: CpuChipIcon },
     { name: 'Sponsors', href: '/sponsors', icon: BuildingOfficeIcon },
     { name: 'Emails', href: '/emails', icon: EnvelopeIcon },
     { name: 'Meetings', href: '/meetings', icon: CalendarDaysIcon },
@@ -122,7 +141,43 @@ export function Layout() {
 
   return (
     <ToastProvider>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gray-50 relative">
+        {/* Cyan geometric squares background matching reference image */}
+        <div
+          className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-cover bg-center bg-no-repeat"
+          style={{
+            backgroundImage:
+              "url('/bg-cyan-squares.png'), linear-gradient(35deg, #42f5ff 0%, #29c7e8 48%, #2286b6 100%)",
+          }}
+        >
+          <svg
+            className="w-full h-full opacity-55"
+            viewBox="0 0 1440 900"
+            preserveAspectRatio="xMidYMid slice"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            {/* Filled translucent squares */}
+            <rect x="180" y="450" width="160" height="160" fill="white" fillOpacity="0.25" />
+            <rect x="580" y="210" width="150" height="150" fill="white" fillOpacity="0.32" />
+            <rect x="860" y="410" width="150" height="150" fill="white" fillOpacity="0.4" />
+            <rect x="1000" y="510" width="170" height="170" fill="white" fillOpacity="0.28" />
+            <rect x="820" y="610" width="150" height="150" fill="#a7f3d0" fillOpacity="0.3" />
+            <rect x="210" y="10" width="140" height="140" fill="#99f6e4" fillOpacity="0.25" />
+            {/* Outlined geometric squares */}
+            <rect x="90" y="620" width="140" height="140" stroke="white" strokeOpacity="0.38" strokeWidth="14" />
+            <rect x="220" y="160" width="120" height="120" stroke="white" strokeOpacity="0.32" strokeWidth="10" />
+            <rect x="470" y="640" width="170" height="170" stroke="#0284c7" strokeOpacity="0.28" strokeWidth="16" />
+            <rect x="610" y="480" width="150" height="150" stroke="#0369a1" strokeOpacity="0.22" strokeWidth="14" />
+            <rect x="890" y="160" width="175" height="175" stroke="white" strokeOpacity="0.24" strokeWidth="16" />
+            <rect x="1030" y="210" width="125" height="125" stroke="#a7f3d0" strokeOpacity="0.38" strokeWidth="12" />
+            <rect x="1220" y="130" width="130" height="130" stroke="white" strokeOpacity="0.35" strokeWidth="14" />
+            <rect x="1310" y="290" width="160" height="160" stroke="white" strokeOpacity="0.28" strokeWidth="10" />
+            <rect x="1050" y="30" width="105" height="105" stroke="#67e8f9" strokeOpacity="0.45" strokeWidth="8" />
+            <rect x="550" y="160" width="55" height="55" stroke="#6ee7b7" strokeOpacity="0.45" strokeWidth="7" />
+          </svg>
+        </div>
+
         {/* Mobile sidebar backdrop */}
         <div
           className={`fixed inset-0 z-40 bg-gray-900/50 lg:hidden ${sidebarOpen ? 'block' : 'hidden'}`}
@@ -132,7 +187,7 @@ export function Layout() {
 
         {/* Sidebar */}
         <aside
-          className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-200 ease-in-out lg:translate-x-0 ${
+          className={`fixed inset-y-0 left-0 z-50 w-64 flex flex-col bg-white border-r border-gray-200 transform transition-transform duration-200 ease-in-out lg:translate-x-0 ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
           aria-label="Sidebar"
@@ -184,7 +239,7 @@ export function Layout() {
         </aside>
 
         {/* Main content */}
-        <div className="lg:pl-64">
+        <div className="lg:pl-64 relative z-10">
           {/* Top bar */}
           <header className="sticky top-0 z-30 bg-white border-b border-gray-200">
             <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
@@ -236,11 +291,60 @@ export function Layout() {
                 )}
               </div>
 
-              <div className="flex items-center gap-4">
-                <button className="relative p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700">
+              <div className="flex items-center gap-4 relative">
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="relative p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                  title="Reply & Outreach Notifications"
+                >
                   <BellIcon className="w-5 h-5" />
-                  <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center text-[10px]">3</span>
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold">
+                      {unreadCount}
+                    </span>
+                  )}
                 </button>
+
+                {showNotifications && (
+                  <div className="absolute right-0 top-12 w-80 sm:w-96 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden">
+                    <div className="p-3.5 border-b border-gray-200 flex items-center justify-between">
+                      <span className="text-sm font-bold text-gray-900">
+                        Sponsor Reply & Outreach Alerts
+                      </span>
+                      {unreadCount > 0 && (
+                        <button
+                          onClick={() => markAllReadMutation.mutate()}
+                          className="text-xs text-primary-600 hover:underline font-medium"
+                        >
+                          Mark all read
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-80 overflow-y-auto divide-y divide-gray-100">
+                      {notificationsList.length > 0 ? (
+                        notificationsList.slice(0, 8).map((notif: any) => (
+                          <div
+                            key={notif.id}
+                            onClick={() => {
+                              setShowNotifications(false);
+                              if (notif.sponsor_id) navigate(`/sponsors/${notif.sponsor_id}`);
+                            }}
+                            className={`p-3.5 hover:bg-gray-50 cursor-pointer text-xs ${
+                              !notif.is_read ? 'bg-primary-50/20' : ''
+                            }`}
+                          >
+                            <p className="font-semibold text-gray-900">{notif.title}</p>
+                            <p className="text-gray-600 mt-0.5">{notif.message}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="p-6 text-center text-xs text-gray-500">
+                          No new notifications. Alerts appear here when sponsors reply!
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className="hidden sm:flex items-center gap-2">
                   <img

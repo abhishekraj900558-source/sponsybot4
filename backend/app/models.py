@@ -517,6 +517,7 @@ class EmailLogResponse(EmailLogBase):
     created_at: datetime
     updated_at: datetime
     sender: Optional[TeamMemberResponse] = None
+    sponsor: Optional[SponsorResponse] = None
     
     class Config:
         from_attributes = True
@@ -545,6 +546,7 @@ class ReplyLogResponse(BaseModel):
 class FollowUpScheduleResponse(BaseModel):
     id: int
     sponsor_id: int
+    email_id: Optional[int] = None
     follow_up_number: int
     scheduled_at: datetime
     status: str
@@ -571,6 +573,8 @@ class MeetingResponse(BaseModel):
     notes: Optional[str]
     outcome: Optional[str]
     created_at: datetime
+    sponsor: Optional[SponsorResponse] = None
+    team_member: Optional[TeamMemberResponse] = None
     
     class Config:
         from_attributes = True
