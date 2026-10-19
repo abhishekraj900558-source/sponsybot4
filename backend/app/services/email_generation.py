@@ -424,7 +424,7 @@ With gratitude,
 
 Thanks for the positive response! Excited that {company_name} is interested in {event_name}.
 
-{reply_context.get('summary', 'Great to hear you\'re interested in exploring a partnership.')}
+{reply_context.get('summary', "Great to hear you're interested in exploring a partnership.")}
 
 As next steps, I'd love to schedule a brief call to:
 1. Discuss which sponsorship option best fits your goals
