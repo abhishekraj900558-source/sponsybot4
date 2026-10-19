@@ -20,8 +20,31 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def init_db() -> None:
-    """Initialize database tables."""
+    """Initialize database tables and ensure schema constraints."""
     Base.metadata.create_all(bind=engine)
+    
+    # Check if normalized_company_name exists in sponsors table (SQLite migration & index)
+    with engine.connect() as conn:
+        try:
+            result = conn.exec_driver_sql("PRAGMA table_info(sponsors)")
+            cols = [row[1] for row in result.fetchall()]
+            if cols and "normalized_company_name" not in cols:
+                conn.exec_driver_sql("ALTER TABLE sponsors ADD COLUMN normalized_company_name VARCHAR(255)")
+                conn.commit()
+            
+            # Backfill any null normalized_company_name
+            from app.models import normalize_company_name
+            rows = conn.exec_driver_sql("SELECT id, company_name FROM sponsors WHERE normalized_company_name IS NULL OR normalized_company_name = ''").fetchall()
+            for r_id, r_name in rows:
+                norm = normalize_company_name(r_name)
+                conn.exec_driver_sql("UPDATE sponsors SET normalized_company_name = ? WHERE id = ?", (norm, r_id))
+            conn.commit()
+            
+            # Ensure unique index exists on normalized_company_name
+            conn.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS uq_sponsor_normalized_company_name ON sponsors(normalized_company_name)")
+            conn.commit()
+        except Exception:
+            pass
 
 
 def get_db() -> Generator[Session, None, None]:

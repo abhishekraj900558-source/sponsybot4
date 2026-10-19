@@ -33,6 +33,7 @@ class EmailGenerationService:
     def __init__(self):
         self.demo_mode = settings.demo_mode
         self.model = None
+        self.safety_settings = None
         
         if not self.demo_mode and settings.gemini_api_key:
             try:
@@ -85,19 +86,33 @@ class EmailGenerationService:
                 previous_emails, reply_context, template
             )
         
-        try:
-            return self._gemini_generate(
-                email_type, sponsor_data, event_data, sender_data,
-                recommended_types, reasoning, research_verified, research_unverified,
-                previous_emails, reply_context, template
-            )
-        except Exception as e:
-            logger.error(f"Gemini email generation failed: {e}")
-            return self._demo_generate(
-                email_type, sponsor_data, event_data, sender_data,
-                recommended_types, reasoning, research_verified, research_unverified,
-                previous_emails, reply_context, template
-            )
+        import time
+        max_retries = 3
+        base_delay = 2.0
+        for attempt in range(max_retries):
+            try:
+                return self._gemini_generate(
+                    email_type, sponsor_data, event_data, sender_data,
+                    recommended_types, reasoning, research_verified, research_unverified,
+                    previous_emails, reply_context, template
+                )
+            except Exception as e:
+                err_msg = str(e).lower()
+                is_rate_limit = any(term in err_msg for term in ["429", "rate limit", "quota", "resourceexhausted", "too many requests"])
+                if is_rate_limit and attempt < max_retries - 1:
+                    wait_time = base_delay * (2 ** attempt)
+                    logger.warning(
+                        f"Gemini email generation rate limit (429) for '{sponsor_data.get('company_name')}' "
+                        f"(attempt {attempt+1}/{max_retries}). Retrying in {wait_time}s..."
+                    )
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"Gemini email generation failed after {attempt+1} attempts: {e}. Falling back to demo mode.")
+                    return self._demo_generate(
+                        email_type, sponsor_data, event_data, sender_data,
+                        recommended_types, reasoning, research_verified, research_unverified,
+                        previous_emails, reply_context, template
+                    )
     
     def _gemini_generate(
         self,
@@ -211,14 +226,18 @@ OUTPUT FORMAT (JSON):
 Generate the email now.
 """
         
+        call_kwargs = {}
+        if self.safety_settings is not None:
+            call_kwargs["safety_settings"] = self.safety_settings
+            
         response = self.model.generate_content(
             prompt,
-            safety_settings=self.safety_settings,
             generation_config=genai.types.GenerationConfig(
                 temperature=0.4,
                 max_output_tokens=3000,
                 response_mime_type="application/json"
-            )
+            ),
+            **call_kwargs
         )
         
         result_json = json.loads(response.text)

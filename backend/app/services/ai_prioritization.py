@@ -75,19 +75,33 @@ class AIPrioritizationService:
                 event_context, institutional_memory
             )
         
-        try:
-            return self._gemini_analysis(
-                company_name, industry, company_category,
-                research_verified, research_unverified,
-                event_context, institutional_memory
-            )
-        except Exception as e:
-            logger.error(f"Gemini analysis failed for {company_name}: {e}")
-            return self._demo_analysis(
-                company_name, industry, company_category,
-                research_verified, research_unverified,
-                event_context, institutional_memory
-            )
+        import time
+        max_retries = 3
+        base_delay = 2.0
+        for attempt in range(max_retries):
+            try:
+                return self._gemini_analysis(
+                    company_name, industry, company_category,
+                    research_verified, research_unverified,
+                    event_context, institutional_memory
+                )
+            except Exception as e:
+                err_msg = str(e).lower()
+                is_rate_limit = any(term in err_msg for term in ["429", "rate limit", "quota", "resourceexhausted", "too many requests"])
+                if is_rate_limit and attempt < max_retries - 1:
+                    wait_time = base_delay * (2 ** attempt)
+                    logger.warning(
+                        f"Gemini prioritization rate limit (429) for '{company_name}' "
+                        f"(attempt {attempt+1}/{max_retries}). Retrying in {wait_time}s..."
+                    )
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"Gemini analysis failed for {company_name} after {attempt+1} attempts: {e}. Falling back to demo mode.")
+                    return self._demo_analysis(
+                        company_name, industry, company_category,
+                        research_verified, research_unverified,
+                        event_context, institutional_memory
+                    )
     
     def _gemini_analysis(
         self,

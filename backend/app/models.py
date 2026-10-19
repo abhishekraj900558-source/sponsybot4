@@ -1,4 +1,4 @@
-# SPONSY BOT Database Models
+import re
 from datetime import datetime
 from enum import Enum as PyEnum
 from typing import Optional, List
@@ -6,10 +6,20 @@ from sqlalchemy import (
     Column, Integer, String, Text, DateTime, Enum, ForeignKey, 
     Boolean, JSON, Index, UniqueConstraint
 )
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.orm import relationship, declarative_base, validates
 from sqlalchemy.sql import func
 
 Base = declarative_base()
+
+
+def normalize_company_name(name: Optional[str]) -> str:
+    """Normalize company name to canonical lowercase alphanumerics for DB unique constraint and concurrency safety."""
+    if not name:
+        return ""
+    s = name.lower().strip()
+    s = re.sub(r'\b(inc|incorporated|corp|corporation|llc|ltd|limited|co|company|group)\b\.?', '', s)
+    cleaned = re.sub(r'[^a-z0-9]', '', s)
+    return cleaned if cleaned else re.sub(r'[^a-z0-9]', '', name.lower())
 
 
 class SponsorStatus(str, PyEnum):
@@ -75,6 +85,7 @@ class Sponsor(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     company_name = Column(String(255), nullable=False, index=True)
+    normalized_company_name = Column(String(255), nullable=True, index=True)
     company_category = Column(String(100), nullable=True)  # Tier: Platinum, Gold, Silver, etc.
     industry = Column(String(100), nullable=True)
     website = Column(String(500), nullable=True)
@@ -134,8 +145,20 @@ class Sponsor(Base):
     
     __table_args__ = (
         Index('ix_sponsors_company_email', 'company_name', 'contact_email'),
+        UniqueConstraint('normalized_company_name', name='uq_sponsor_normalized_company_name'),
         UniqueConstraint('company_name', 'contact_email', name='uq_sponsor_company_contact'),
     )
+
+    def __init__(self, **kwargs):
+        if "company_name" in kwargs and not kwargs.get("normalized_company_name"):
+            kwargs["normalized_company_name"] = normalize_company_name(kwargs["company_name"])
+        super().__init__(**kwargs)
+
+    @validates("company_name")
+    def _validate_company_name(self, key, value):
+        if value:
+            self.normalized_company_name = normalize_company_name(value)
+        return value
 
 
 class EmailLog(Base):

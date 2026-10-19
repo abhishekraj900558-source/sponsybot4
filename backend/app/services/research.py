@@ -54,15 +54,30 @@ class ResearchService:
         Uses Tavily API for web search, then structures the results.
         All information from web search is marked as UNVERIFIED unless
         it comes from official company sources.
+        Includes exponential backoff retry for HTTP 429 / rate limits.
         """
         if self.demo_mode:
             return self._demo_research(company_name, website, industry)
         
-        try:
-            return await self._tavily_research(company_name, website, industry)
-        except Exception as e:
-            logger.error(f"Tavily research failed for {company_name}: {e}")
-            return self._demo_research(company_name, website, industry)
+        import asyncio
+        max_retries = 3
+        base_delay = 2.0
+        for attempt in range(max_retries):
+            try:
+                return await self._tavily_research(company_name, website, industry)
+            except Exception as e:
+                err_msg = str(e).lower()
+                is_rate_limit = any(term in err_msg for term in ["429", "rate limit", "quota", "too many requests"])
+                if is_rate_limit and attempt < max_retries - 1:
+                    wait_time = base_delay * (2 ** attempt)
+                    logger.warning(
+                        f"Tavily API rate limit (429) for '{company_name}' (attempt {attempt+1}/{max_retries}). "
+                        f"Retrying in {wait_time}s..."
+                    )
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error(f"Tavily research failed for {company_name} after {attempt+1} attempts: {e}. Falling back to demo mode.")
+                    return self._demo_research(company_name, website, industry)
     
     async def _tavily_research(
         self, 
@@ -70,7 +85,7 @@ class ResearchService:
         website: Optional[str] = None,
         industry: Optional[str] = None
     ) -> ResearchResult:
-        """Research using Tavily API."""
+        """Research using Tavily API with retry on 429 rate limits."""
         
         # Build search queries
         queries = [
@@ -85,17 +100,37 @@ class ResearchService:
         
         all_results = []
         sources = []
+        import asyncio
+        max_retries = 3
+        base_delay = 2.0
         
         for query in queries:
-            try:
-                response = self.client.search(
-                    query=query,
-                    search_depth="basic",
-                    max_results=5,
-                    include_domains=None,
-                    exclude_domains=None
-                )
-                
+            response = None
+            for attempt in range(max_retries):
+                try:
+                    response = self.client.search(
+                        query=query,
+                        search_depth="basic",
+                        max_results=5,
+                        include_domains=None,
+                        exclude_domains=None
+                    )
+                    break
+                except Exception as e:
+                    err_msg = str(e).lower()
+                    is_rate_limit = any(term in err_msg for term in ["429", "rate limit", "quota", "too many requests"])
+                    if is_rate_limit and attempt < max_retries - 1:
+                        wait_time = base_delay * (2 ** attempt)
+                        logger.warning(
+                            f"Tavily query rate limit (429) for '{query}' (attempt {attempt+1}/{max_retries}). "
+                            f"Retrying in {wait_time}s..."
+                        )
+                        await asyncio.sleep(wait_time)
+                    else:
+                        logger.warning(f"Query failed: {query} - {e}")
+                        break
+            
+            if response:
                 for result in response.get("results", []):
                     all_results.append({
                         "query": query,
@@ -105,9 +140,9 @@ class ResearchService:
                         "score": result.get("score", 0)
                     })
                     sources.append(result.get("url", ""))
-                    
-            except Exception as e:
-                logger.warning(f"Query failed: {query} - {e}")
+        
+        if not all_results and queries:
+            raise Exception("Tavily search yielded zero results due to rate limits or connection errors")
         
         # Structure the results
         verified = {}

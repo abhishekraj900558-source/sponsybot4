@@ -342,6 +342,8 @@ def create_default_sponsors(db):
             db.add(Sponsor(**s))
         db.commit()
 
+
+def run_follow_up_scheduler():
     """Background job to check and schedule follow-ups."""
     from app.database import SessionLocal
     from app.services.follow_up import FollowUpService
@@ -456,7 +458,6 @@ def create_default_sponsors(db):
 
 
 @asynccontextmanager
-def run_follow_up_scheduler(*a, **k): pass
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup

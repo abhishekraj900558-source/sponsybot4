@@ -1,6 +1,7 @@
 # SPONSY BOT API Routes - Main Router
 from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks, Request, Body
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import logging
@@ -12,7 +13,7 @@ from app.models import (
     Sponsor, TeamMember, EmailLog, ReplyLog, FollowUpSchedule,
     Meeting, EmailTemplate, Event, InstitutionalMemory, Notification,
     SponsorStatus, EmailStatus, ReplyClassification, MeetingStatus,
-    SponsorshipType,
+    SponsorshipType, normalize_company_name,
     SponsorCreate, SponsorUpdate, SponsorResponse, SponsorListResponse,
     TeamMemberCreate, TeamMemberUpdate, TeamMemberResponse,
     EmailLogCreate, EmailLogUpdate, EmailLogResponse,
@@ -195,8 +196,23 @@ def create_sponsor(sponsor: SponsorCreate, db: Session = Depends(get_db)):
     
     db_sponsor = Sponsor(**sponsor.model_dump())
     db.add(db_sponsor)
-    db.commit()
-    db.refresh(db_sponsor)
+    try:
+        db.commit()
+        db.refresh(db_sponsor)
+    except IntegrityError:
+        db.rollback()
+        norm_name = normalize_company_name(sponsor.company_name)
+        existing = db.query(Sponsor).filter(Sponsor.normalized_company_name == norm_name).first()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Potential duplicate sponsor detected (blocked by database unique constraint)",
+                "conflict_type": "concurrent_duplicate",
+                "details": f"Company '{sponsor.company_name}' was concurrently registered or already exists in the database.",
+                "existing_sponsor_id": existing.id if existing else None,
+                "suggested_action": "Coordinate with your team or use the existing sponsor record."
+            }
+        )
     return db_sponsor
 
 

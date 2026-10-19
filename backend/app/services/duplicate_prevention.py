@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 
 from app.config import settings
-from app.models import Sponsor, EmailLog, TeamMember, EmailStatus
+from app.models import Sponsor, EmailLog, TeamMember, EmailStatus, normalize_company_name
 
 logger = logging.getLogger(__name__)
 
@@ -43,14 +43,30 @@ class DuplicatePreventionService:
         Comprehensive duplicate check before creating sponsor or sending email.
         
         Checks:
-        1. Exact company name + contact email match
-        2. Similar company name (fuzzy match)
-        3. Same contact email at different company
-        4. Same contact person at different company
-        5. Company assigned to another team member
+        1. Canonical normalized company name match (DB concurrency protection)
+        2. Exact company name + contact email match
+        3. Exact company name match (different contact)
+        4. Same contact email at different company
+        5. Similar company name (fuzzy match)
+        6. Website domain matching
         """
         
-        # 1. Exact match: company name + contact email
+        # 1. Canonical normalized company name match (protects against concurrent inserts of 'Google' vs 'Google Inc')
+        norm_name = normalize_company_name(company_name)
+        if norm_name:
+            exact_norm = self.db.query(Sponsor).filter(
+                Sponsor.normalized_company_name == norm_name
+            ).first()
+            if exact_norm:
+                return DuplicateCheckResult(
+                    is_duplicate=True,
+                    existing_sponsor=exact_norm,
+                    conflict_type="exact_company_normalized",
+                    conflict_details=f"Company '{company_name}' normalizes to '{norm_name}', matching existing sponsor '{exact_norm.company_name}' (ID: {exact_norm.id})",
+                    suggested_action=self._get_suggested_action(exact_norm, current_user_id)
+                )
+        
+        # 2. Exact match: company name + contact email
         if contact_email:
             exact_match = self.db.query(Sponsor).filter(
                 Sponsor.company_name.ilike(company_name),

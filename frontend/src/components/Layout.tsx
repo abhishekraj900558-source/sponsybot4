@@ -2,6 +2,11 @@ import React, { useState, createContext, useContext, ReactNode, useCallback } fr
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
+  useNotifications,
+  useUnreadNotificationCount,
+  useMarkAllNotificationsRead,
+} from '../hooks/useApi';
+import {
   HomeIcon,
   BuildingOfficeIcon,
   EnvelopeIcon,
@@ -84,12 +89,6 @@ function ToastProvider({ children }: { children: ReactNode }) {
     </ToastContext.Provider>
   );
 }
-
-import {
-  useNotifications,
-  useUnreadNotificationCount,
-  useMarkAllNotificationsRead,
-} from '../hooks/useApi';
 
 export function Layout() {
   const { user, logout } = useAuth();

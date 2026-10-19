@@ -482,7 +482,7 @@ export function Sponsors() {
                       <td className="px-5 py-4 text-right">
                         <Link
                           to={'/sponsors/' + sponsor.id}
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(e: React.MouseEvent) => e.stopPropagation()}
                           className="text-primary-600 hover:underline text-xs font-semibold"
                         >
                           Open Tracker →
